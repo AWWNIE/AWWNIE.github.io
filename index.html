@@ -334,24 +334,27 @@
     }
 
     .kick-btn {
-      padding: 4px 8px;
-      font-size: 10px;
-      background: rgba(255, 165, 0, 0.2);
-      border: 1px solid rgba(255, 165, 0, 0.3);
-      color: #ffa500;
-      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11px;
+      background: rgba(255, 107, 107, 0.2);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      color: #ff6b6b;
+      border-radius: 8px;
       cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
     }
 
     .kick-btn:hover {
-      background: rgba(255, 165, 0, 0.3);
-      transform: none;
-      box-shadow: none;
+      background: rgba(255, 107, 107, 0.3);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 8px rgba(255, 107, 107, 0.2);
     }
 
     .kick-btn.voted {
-      background: rgba(255, 165, 0, 0.4);
+      background: rgba(255, 107, 107, 0.4);
       color: #fff;
+      border-color: #ff6b6b;
     }
 
     .queue-list {
@@ -399,14 +402,14 @@
 
     .notification {
       position: fixed;
-      top: 20px;
+      top: 60px;
       right: 20px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       padding: 15px 20px;
       border-radius: 12px;
       display: none;
-      z-index: 1000;
+      z-index: 1001;
       backdrop-filter: blur(10px);
       border: 1px solid rgba(255, 255, 255, 0.2);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
@@ -441,13 +444,14 @@
 
     .connection-status {
       position: fixed;
-      bottom: 20px;
+      top: 20px;
       right: 20px;
-      padding: 10px 15px;
+      padding: 8px 12px;
       border-radius: 8px;
       font-size: 12px;
       font-weight: 500;
-      z-index: 999;
+      z-index: 1002;
+      backdrop-filter: blur(10px);
     }
 
     .connection-status.connected {
@@ -668,11 +672,11 @@
         <input type="text" id="nameInput" placeholder="Enter your name" style="text-align: center;">
         <input type="text" id="roomInput" placeholder="Enter room ID" style="text-align: center;">
         <div id="passwordSection" style="display: none;">
-          <input type="password" id="passwordInput" placeholder="Enter room password" style="text-align: center;">
+          <input type="password" id="passwordInput" placeholder="Enter room password" style="text-align: center; width: 100%; padding: 12px 16px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px; color: white; font-size: 14px; backdrop-filter: blur(10px);">
         </div>
         <div id="createPasswordSection" style="display: none;">
-          <input type="password" id="createPasswordInput" placeholder="Set room password (optional)" style="text-align: center;">
-          <small style="color: #888; font-size: 12px; margin-top: 5px;">Leave empty for no password</small>
+          <input type="password" id="createPasswordInput" placeholder="Set room password (optional)" style="text-align: center; width: 100%; padding: 12px 16px; background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 12px; color: white; font-size: 14px; backdrop-filter: blur(10px); margin-bottom: 5px;">
+          <small style="color: #888; font-size: 12px; display: block; text-align: center;">Leave empty for no password</small>
         </div>
         <button id="joinBtn" style="margin-top: 10px;">Check Room</button>
         <button id="createRoomBtn" style="display: none;">Create Room</button>
@@ -697,23 +701,28 @@
             </div>
           </div>
 
-          <div class="search-container">
-            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-              <input type="text" id="searchInput" placeholder="Search YouTube videos..." style="flex: 1;">
-              <button id="searchBtn" class="secondary">Search</button>
-            </div>
-            <div id="searchResults" class="search-results"></div>
-          </div>
-
           <div class="controls">
-            <div class="input-group">
-              <input type="text" id="videoInput" placeholder="Paste YouTube/Vimeo/Twitch URL">
+            <div class="search-container" style="width: 100%; margin-bottom: 15px;">
+              <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <input type="text" id="searchInput" placeholder="Search YouTube videos..." style="flex: 1;">
+                <button id="searchBtn" class="secondary">Search</button>
+              </div>
+              <div id="searchResults" class="search-results"></div>
             </div>
-            <button id="addVideoBtn">Add Video</button>
-            <button id="skipBtn" class="secondary">Vote Skip</button>
-            <button id="readyBtn" class="ready">Ready</button>
-            <button id="pipBtn" class="secondary">Picture-in-Picture</button>
-            <button id="inviteBtn" class="secondary">Invite</button>
+            
+            <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px;">
+              <div class="input-group" style="flex: 1; min-width: 300px;">
+                <input type="text" id="videoInput" placeholder="Paste YouTube/Vimeo/Twitch URL">
+              </div>
+              <button id="addVideoBtn">Add Video</button>
+            </div>
+            
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button id="readyBtn" class="ready">Ready</button>
+              <button id="skipBtn" class="secondary">Vote Skip</button>
+              <button id="pipBtn" class="secondary">Picture-in-Picture</button>
+              <button id="inviteBtn" class="secondary">Invite</button>
+            </div>
           </div>
         </div>
 
@@ -895,9 +904,20 @@
 
     function voteKick(userId, userName) {
       if (currentRoom && socket) {
-        // This is a temporary implementation - the server needs the actual socket ID
-        // For now, we'll send the userName and let the server find the socket ID
+        console.log(`Voting to kick user: ${userName}`);
         socket.emit("voteKick", { roomId: currentRoom, targetUserName: userName });
+        showNotification(`Voted to kick ${userName}`, "warning");
+        
+        // Visual feedback on the button
+        const kickButtons = document.querySelectorAll(`button[onclick*="${userName}"]`);
+        kickButtons.forEach(btn => {
+          btn.textContent = "Voted";
+          btn.classList.add("voted");
+          setTimeout(() => {
+            btn.textContent = "Kick";
+            btn.classList.remove("voted");
+          }, 3000);
+        });
       }
     }
 
@@ -1175,11 +1195,18 @@
           
           const userDiv = document.createElement("div");
           userDiv.className = "user" + (user.ready ? " ready" : "");
+          userDiv.style.display = "flex";
+          userDiv.style.alignItems = "center";
+          userDiv.style.justifyContent = "space-between";
+          userDiv.style.width = "100%";
+          
           userDiv.innerHTML = `
-            <div class="user-status"></div>
-            ${user.name}
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <div class="user-status"></div>
+              <span>${user.name}</span>
+            </div>
             <div class="user-actions">
-              <button class="kick-btn" onclick="voteKick('${userId}', '${user.name}')">Kick</button>
+              <button class="kick-btn" onclick="voteKick('${userId}', '${user.name}')" title="Vote to kick ${user.name}">Kick</button>
             </div>
           `;
           userList.appendChild(userDiv);
@@ -1214,9 +1241,11 @@
         
         // Reset skip votes when new video starts
         hasVotedSkip = false;
-        document.getElementById("skipBtn").textContent = "Vote Skip";
-        document.getElementById("skipBtn").className = "secondary";
+        const skipBtn = document.getElementById("skipBtn");
+        skipBtn.textContent = "Vote Skip";
+        skipBtn.className = "secondary";
         document.getElementById("skipVoteStatus").style.display = "none";
+        document.getElementById("kickVoteStatus").style.display = "none";
       });
 
       socket.on("videoAdded", (data) => {
@@ -1375,15 +1404,18 @@
       if (currentRoom && socket) {
         console.log("Voting to skip");
         socket.emit("voteSkip", currentRoom);
-        hasVotedSkip = !hasVotedSkip;
         
+        // Toggle the vote state immediately for UI feedback
+        hasVotedSkip = !hasVotedSkip;
         const btn = document.getElementById("skipBtn");
         if (hasVotedSkip) {
           btn.textContent = "Remove Vote";
           btn.className = "danger";
+          showNotification("Vote added", "info");
         } else {
           btn.textContent = "Vote Skip";
           btn.className = "secondary";
+          showNotification("Vote removed", "info");
         }
       }
     };
@@ -1416,9 +1448,12 @@
           width: '100%',
           videoId: videoId,
           playerVars: {
+            'autoplay': 1,
             'modestbranding': 1,
             'rel': 0,
-            'showinfo': 0
+            'showinfo': 0,
+            'controls': 1,
+            'enablejsapi': 1
           },
           events: { 
             'onStateChange': onPlayerStateChange,
