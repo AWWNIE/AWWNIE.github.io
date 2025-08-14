@@ -588,6 +588,10 @@ io.on("connection", (socket) => {
         if (targetSocket) {
           targetSocket.leave(roomId);
           targetSocket.emit("kicked", { reason: "vote", room: roomId });
+          // Force disconnect after a short delay
+          setTimeout(() => {
+            targetSocket.disconnect(true);
+          }, 1000);
         }
         
         // Notify remaining users
