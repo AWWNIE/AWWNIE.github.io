@@ -26,7 +26,7 @@ io.on("connection", (socket) => {
   socket.on("joinRoom", (roomId, userName) => {
     socket.join(roomId);
     
-    // Check if room exists and has users, if not create fresh room
+    // Always create fresh room if it doesn't exist or is empty
     if (!rooms[roomId] || Object.keys(rooms[roomId].users || {}).length === 0) {
       rooms[roomId] = { 
         queue: [], 
@@ -37,14 +37,17 @@ io.on("connection", (socket) => {
         isPaused: false,
         currentTime: 0
       };
+      console.log(`Created fresh room: ${roomId}`);
     }
     
     rooms[roomId].users[socket.id] = { name: userName, ready: false };
-    console.log(`User ${userName} joined room ${roomId}. Total users: ${Object.keys(rooms[roomId].users).length}`);
+    console.log(`User ${userName} (${socket.id}) joined room ${roomId}. Total users: ${Object.keys(rooms[roomId].users).length}`);
     
+    // Send current room state to the joining user
     socket.emit("updateQueue", rooms[roomId].queue);
     socket.emit("updateUsers", Object.values(rooms[roomId].users));
     
+    // Send current video to new user if one is playing
     if (rooms[roomId].currentVideo) {
       socket.emit("playVideo", {
         videoId: rooms[roomId].currentVideo,
@@ -53,18 +56,25 @@ io.on("connection", (socket) => {
       });
     }
     
+    // Notify all users in room about the new user
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
   });
 
   socket.on("addVideo", ({ roomId, videoId }) => {
-    if (!rooms[roomId]) return;
+    if (!rooms[roomId]) {
+      console.log(`Room ${roomId} doesn't exist for addVideo`);
+      return;
+    }
     
+    console.log(`Adding video ${videoId} to room ${roomId}`);
     rooms[roomId].queue.push(videoId);
     io.to(roomId).emit("updateQueue", rooms[roomId].queue);
     
+    // If no video is currently playing, start this one immediately
     if (!rooms[roomId].currentVideo) {
       rooms[roomId].currentVideo = videoId;
-      rooms[roomId].queue.shift();
+      rooms[roomId].queue.shift(); // Remove from queue since it's now playing
+      console.log(`Auto-starting video ${videoId} in room ${roomId}`);
       io.to(roomId).emit("playVideo", {
         videoId: videoId,
         isPaused: false,
@@ -77,6 +87,8 @@ io.on("connection", (socket) => {
   socket.on("videoEnded", (roomId) => {
     if (!rooms[roomId]) return;
     
+    console.log(`Video ended in room ${roomId}`);
+    
     if (rooms[roomId].queue.length > 0) {
       const nextVideo = rooms[roomId].queue.shift();
       rooms[roomId].currentVideo = nextVideo;
@@ -85,6 +97,7 @@ io.on("connection", (socket) => {
       rooms[roomId].readyUsers.clear();
       rooms[roomId].skipVotes.clear();
       
+      console.log(`Playing next video ${nextVideo} in room ${roomId}`);
       io.to(roomId).emit("playVideo", {
         videoId: nextVideo,
         isPaused: false,
@@ -95,11 +108,15 @@ io.on("connection", (socket) => {
       rooms[roomId].currentVideo = null;
       rooms[roomId].readyUsers.clear();
       rooms[roomId].skipVotes.clear();
+      console.log(`No more videos in queue for room ${roomId}`);
     }
   });
 
   socket.on("toggleReady", (roomId) => {
-    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) return;
+    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) {
+      console.log(`Invalid ready toggle for room ${roomId} or user ${socket.id}`);
+      return;
+    }
     
     const user = rooms[roomId].users[socket.id];
     user.ready = !user.ready;
@@ -110,14 +127,15 @@ io.on("connection", (socket) => {
       rooms[roomId].readyUsers.delete(socket.id);
     }
     
+    // Update all users about ready states
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
     
     const totalUsers = Object.keys(rooms[roomId].users).length;
     const readyCount = rooms[roomId].readyUsers.size;
     
-    console.log(`Ready check: ${readyCount}/${totalUsers} users ready in room ${roomId}`);
+    console.log(`Ready check in room ${roomId}: ${readyCount}/${totalUsers} users ready`);
     
-    // Auto-start video when all users are ready (minimum 1 user, but works with 1+ users)
+    // Auto-start video when all users are ready and there's a queue
     if (readyCount === totalUsers && totalUsers >= 1 && rooms[roomId].queue.length > 0 && !rooms[roomId].currentVideo) {
       const nextVideo = rooms[roomId].queue.shift();
       rooms[roomId].currentVideo = nextVideo;
@@ -126,7 +144,7 @@ io.on("connection", (socket) => {
       rooms[roomId].readyUsers.clear();
       rooms[roomId].skipVotes.clear();
       
-      console.log(`Auto-starting video ${nextVideo} in room ${roomId}`);
+      console.log(`Auto-starting video ${nextVideo} in room ${roomId} (all users ready)`);
       io.to(roomId).emit("playVideo", {
         videoId: nextVideo,
         isPaused: false,
@@ -140,7 +158,10 @@ io.on("connection", (socket) => {
   });
 
   socket.on("voteSkip", (roomId) => {
-    if (!rooms[roomId] || !rooms[roomId].currentVideo || !rooms[roomId].users[socket.id]) return;
+    if (!rooms[roomId] || !rooms[roomId].currentVideo || !rooms[roomId].users[socket.id]) {
+      console.log(`Invalid skip vote for room ${roomId}`);
+      return;
+    }
     
     const userName = rooms[roomId].users[socket.id].name;
     
@@ -171,7 +192,7 @@ io.on("connection", (socket) => {
       
       // Check if all users voted to skip
       if (skipVotes === totalUsers) {
-        console.log(`Skip vote passed in room ${roomId}`);
+        console.log(`Skip vote passed in room ${roomId} (${skipVotes}/${totalUsers})`);
         
         if (rooms[roomId].queue.length > 0) {
           const nextVideo = rooms[roomId].queue.shift();
@@ -232,6 +253,7 @@ io.on("connection", (socket) => {
         const userName = rooms[roomId].users[socket.id].name;
         delete rooms[roomId].users[socket.id];
         rooms[roomId].readyUsers.delete(socket.id);
+        rooms[roomId].skipVotes.delete(socket.id);
         
         const remainingUsers = Object.keys(rooms[roomId].users).length;
         console.log(`User ${userName} left room ${roomId}. Remaining users: ${remainingUsers}`);
