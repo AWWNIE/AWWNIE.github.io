@@ -1,56 +1,62 @@
+// server.js
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 
 const app = express();
-app.use(cors()); // allow frontend on GitHub Pages
+app.use(cors()); // Allow cross-origin requests
 
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: { origin: "*", methods: ["GET", "POST"] },
+  cors: {
+    origin: "*", // Allow all origins for GitHub Pages
+    methods: ["GET", "POST"]
+  }
 });
 
-const rooms = {};
+// Simple message if you open backend URL
+app.get("/", (req, res) => {
+  res.send("Watch Together backend is running!");
+});
+
+// Rooms data
+const rooms = {}; // roomId -> { queue: [], currentVideo: null }
 
 io.on("connection", (socket) => {
-  let currentRoom = null;
+  console.log("New client connected:", socket.id);
 
-  socket.on("joinRoom", ({ roomId, name, secret }) => {
-    currentRoom = roomId;
+  socket.on("joinRoom", (roomId, userName) => {
     socket.join(roomId);
-
     if (!rooms[roomId]) {
       rooms[roomId] = { queue: [], currentVideo: null };
     }
-
-    io.to(roomId).emit("queueUpdated", rooms[roomId].queue);
-    io.to(roomId).emit("currentVideo", rooms[roomId].currentVideo);
+    // Send current queue to new user
+    socket.emit("updateQueue", rooms[roomId].queue);
   });
 
-  socket.on("addToQueue", ({ videoId, title }) => {
-    if (!currentRoom) return;
-    rooms[currentRoom].queue.push({ videoId, title });
-    io.to(currentRoom).emit("queueUpdated", rooms[currentRoom].queue);
+  socket.on("addVideo", ({ roomId, videoId }) => {
+    if (!rooms[roomId]) return;
+    rooms[roomId].queue.push(videoId);
+    io.to(roomId).emit("updateQueue", rooms[roomId].queue);
+
+    // Auto-play first video if none is playing
+    if (!rooms[roomId].currentVideo) {
+      rooms[roomId].currentVideo = videoId;
+      io.to(roomId).emit("playVideo", videoId);
+    }
   });
 
-  socket.on("nextFromQueue", () => {
-    if (!currentRoom) return;
-    const room = rooms[currentRoom];
-    const next = room.queue.shift() || null;
-    room.currentVideo = next;
-    io.to(currentRoom).emit("queueUpdated", room.queue);
-    io.to(currentRoom).emit("currentVideo", room.currentVideo);
+  socket.on("videoEnded", (roomId) => {
+    if (!rooms[roomId]) return;
+    rooms[roomId].queue.shift(); // Remove first video
+    const nextVideo = rooms[roomId].queue[0] || null;
+    rooms[roomId].currentVideo = nextVideo;
+    if (nextVideo) io.to(roomId).emit("playVideo", nextVideo);
   });
 
-  socket.on("playVideo", () => {
-    if (!currentRoom) return;
-    io.to(currentRoom).emit("playVideo");
-  });
-
-  socket.on("pauseVideo", () => {
-    if (!currentRoom) return;
-    io.to(currentRoom).emit("pauseVideo");
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
   });
 });
 
