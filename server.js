@@ -100,8 +100,8 @@ const rooms = {};
 // YouTube Data API v3 configuration (keep this private)
 const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
-// Room expiration - auto-delete inactive rooms after 2 hours
-const ROOM_EXPIRATION_TIME = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+// Room expiration - auto-delete inactive rooms after 6 hours
+const ROOM_EXPIRATION_TIME = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
 
 function cleanupInactiveRooms() {
   const now = Date.now();
