@@ -2,7 +2,6 @@ const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
-const https = require("https");
 
 const app = express();
 app.use(cors());
@@ -21,46 +20,6 @@ app.get("/", (req, res) => {
 
 const rooms = {};
 
-// Function to get YouTube video title
-async function getVideoTitle(videoId) {
-  return new Promise((resolve) => {
-    const options = {
-      hostname: 'www.googleapis.com',
-      port: 443,
-      path: `/youtube/v3/videos?part=snippet&id=${videoId}&key=AIzaSyBPLvXVH3vgDbXkUYW-XfO-lCdIKJfFsIo`,
-      method: 'GET'
-    };
-
-    // Fallback - return video ID if API fails
-    const fallback = () => resolve(`Video: ${videoId}`);
-    
-    try {
-      const req = https.request(options, (res) => {
-        let data = '';
-        res.on('data', (chunk) => data += chunk);
-        res.on('end', () => {
-          try {
-            const response = JSON.parse(data);
-            if (response.items && response.items[0] && response.items[0].snippet) {
-              resolve(response.items[0].snippet.title);
-            } else {
-              fallback();
-            }
-          } catch (error) {
-            fallback();
-          }
-        });
-      });
-      
-      req.on('error', fallback);
-      req.setTimeout(5000, fallback);
-      req.end();
-    } catch (error) {
-      fallback();
-    }
-  });
-}
-
 io.on("connection", (socket) => {
   console.log("New client connected:", socket.id);
 
@@ -71,8 +30,7 @@ io.on("connection", (socket) => {
     if (!rooms[roomId] || Object.keys(rooms[roomId].users || {}).length === 0) {
       rooms[roomId] = { 
         queue: [], 
-        currentVideo: null, 
-        currentVideoTitle: null,
+        currentVideo: null,
         users: {},
         readyUsers: new Set(),
         skipVotes: new Set(),
@@ -98,22 +56,17 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
   });
 
-  socket.on("addVideo", async ({ roomId, videoId }) => {
+  socket.on("addVideo", ({ roomId, videoId }) => {
     if (!rooms[roomId]) return;
     
-    const title = await getVideoTitle(videoId);
-    const videoData = { id: videoId, title: title };
-    
-    rooms[roomId].queue.push(videoData);
+    rooms[roomId].queue.push(videoId);
     io.to(roomId).emit("updateQueue", rooms[roomId].queue);
     
     if (!rooms[roomId].currentVideo) {
       rooms[roomId].currentVideo = videoId;
-      rooms[roomId].currentVideoTitle = title;
       rooms[roomId].queue.shift();
       io.to(roomId).emit("playVideo", {
         videoId: videoId,
-        title: title,
         isPaused: false,
         currentTime: 0
       });
@@ -126,23 +79,20 @@ io.on("connection", (socket) => {
     
     if (rooms[roomId].queue.length > 0) {
       const nextVideo = rooms[roomId].queue.shift();
-      rooms[roomId].currentVideo = nextVideo.id;
-      rooms[roomId].currentVideoTitle = nextVideo.title;
+      rooms[roomId].currentVideo = nextVideo;
       rooms[roomId].isPaused = false;
       rooms[roomId].currentTime = 0;
       rooms[roomId].readyUsers.clear();
       rooms[roomId].skipVotes.clear();
       
       io.to(roomId).emit("playVideo", {
-        videoId: nextVideo.id,
-        title: nextVideo.title,
+        videoId: nextVideo,
         isPaused: false,
         currentTime: 0
       });
       io.to(roomId).emit("updateQueue", rooms[roomId].queue);
     } else {
       rooms[roomId].currentVideo = null;
-      rooms[roomId].currentVideoTitle = null;
       rooms[roomId].readyUsers.clear();
       rooms[roomId].skipVotes.clear();
     }
@@ -170,17 +120,15 @@ io.on("connection", (socket) => {
     // Auto-start video when all users are ready (minimum 1 user, but works with 1+ users)
     if (readyCount === totalUsers && totalUsers >= 1 && rooms[roomId].queue.length > 0 && !rooms[roomId].currentVideo) {
       const nextVideo = rooms[roomId].queue.shift();
-      rooms[roomId].currentVideo = nextVideo.id;
-      rooms[roomId].currentVideoTitle = nextVideo.title;
+      rooms[roomId].currentVideo = nextVideo;
       rooms[roomId].isPaused = false;
       rooms[roomId].currentTime = 0;
       rooms[roomId].readyUsers.clear();
       rooms[roomId].skipVotes.clear();
       
-      console.log(`Auto-starting video ${nextVideo.title} in room ${roomId}`);
+      console.log(`Auto-starting video ${nextVideo} in room ${roomId}`);
       io.to(roomId).emit("playVideo", {
-        videoId: nextVideo.id,
-        title: nextVideo.title,
+        videoId: nextVideo,
         isPaused: false,
         currentTime: 0
       });
@@ -227,16 +175,14 @@ io.on("connection", (socket) => {
         
         if (rooms[roomId].queue.length > 0) {
           const nextVideo = rooms[roomId].queue.shift();
-          rooms[roomId].currentVideo = nextVideo.id;
-          rooms[roomId].currentVideoTitle = nextVideo.title;
+          rooms[roomId].currentVideo = nextVideo;
           rooms[roomId].isPaused = false;
           rooms[roomId].currentTime = 0;
           rooms[roomId].readyUsers.clear();
           rooms[roomId].skipVotes.clear();
           
           io.to(roomId).emit("playVideo", {
-            videoId: nextVideo.id,
-            title: nextVideo.title,
+            videoId: nextVideo,
             isPaused: false,
             currentTime: 0
           });
@@ -244,7 +190,6 @@ io.on("connection", (socket) => {
           io.to(roomId).emit("videoSkipped", { reason: "vote" });
         } else {
           rooms[roomId].currentVideo = null;
-          rooms[roomId].currentVideoTitle = null;
           rooms[roomId].readyUsers.clear();
           rooms[roomId].skipVotes.clear();
           io.to(roomId).emit("videoStopped");
