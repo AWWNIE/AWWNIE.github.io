@@ -163,6 +163,10 @@
       border-radius: 15px;
       overflow: hidden;
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      min-height: 400px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
 
     .controls {
@@ -249,7 +253,6 @@
     button.ready:hover {
       box-shadow: 0 10px 20px rgba(16, 172, 132, 0.3);
     }
-
 
     .section-title {
       font-size: 1.2rem;
@@ -354,6 +357,7 @@
       font-size: 14px;
       line-height: 1.4;
       color: #fff;
+      word-break: break-all;
     }
 
     .notification {
@@ -370,6 +374,7 @@
       border: 1px solid rgba(255, 255, 255, 0.2);
       box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
       font-weight: 500;
+      max-width: 350px;
     }
 
     .notification.success {
@@ -395,6 +400,29 @@
       height: 60px;
       margin-bottom: 15px;
       opacity: 0.5;
+    }
+
+    .connection-status {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      padding: 10px 15px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 500;
+      z-index: 999;
+    }
+
+    .connection-status.connected {
+      background: rgba(16, 172, 132, 0.2);
+      border: 1px solid rgba(16, 172, 132, 0.5);
+      color: #10ac84;
+    }
+
+    .connection-status.disconnected {
+      background: rgba(255, 107, 107, 0.2);
+      border: 1px solid rgba(255, 107, 107, 0.5);
+      color: #ff6b6b;
     }
 
     /* Scrollbar styles */
@@ -521,6 +549,7 @@
   </div>
 
   <div id="notification" class="notification"></div>
+  <div id="connectionStatus" class="connection-status disconnected">Disconnected</div>
 
   <script>
     let socket;
@@ -530,6 +559,9 @@
     let hasVotedSkip = false;
     let syncingVideo = false;
     let usersExpanded = true;
+
+    // Railway deployment URL
+    const SERVER_URL = "https://watchtogether-production.up.railway.app/";
 
     function extractVideoID(url) {
       const match = url.match(/[?&]v=([^&]+)/);
@@ -547,6 +579,17 @@
       setTimeout(() => {
         notification.style.display = "none";
       }, 4000);
+    }
+
+    function updateConnectionStatus(connected) {
+      const status = document.getElementById("connectionStatus");
+      if (connected) {
+        status.textContent = "Connected";
+        status.className = "connection-status connected";
+      } else {
+        status.textContent = "Disconnected";
+        status.className = "connection-status disconnected";
+      }
     }
 
     function updateVideoTitle(videoId) {
@@ -576,21 +619,44 @@
     document.getElementById("joinBtn").onclick = () => {
       const name = document.getElementById("nameInput").value.trim();
       const room = document.getElementById("roomInput").value.trim();
-      if (!name || !room) return showNotification("Please enter both name and room ID", "error");
+      
+      if (!name || !room) {
+        showNotification("Please enter both name and room ID", "error");
+        return;
+      }
 
       currentRoom = room;
       document.getElementById("loginSection").style.display = "none";
       document.getElementById("appSection").style.display = "block";
 
-      socket = io("https://watchtogether-production.up.railway.app/");
-      socket.emit("joinRoom", room, name);
+      console.log("Connecting to:", SERVER_URL);
+      socket = io(SERVER_URL);
+      
+      socket.on("connect", () => {
+        console.log("Connected to server");
+        updateConnectionStatus(true);
+        socket.emit("joinRoom", room, name);
+        showNotification(`Connected to room: ${room}`, "success");
+      });
+
+      socket.on("disconnect", () => {
+        console.log("Disconnected from server");
+        updateConnectionStatus(false);
+        showNotification("Disconnected from server", "error");
+      });
+
+      socket.on("connect_error", (error) => {
+        console.error("Connection error:", error);
+        updateConnectionStatus(false);
+        showNotification("Failed to connect to server", "error");
+      });
 
       setupSocketListeners();
-      showNotification(`Welcome to room: ${room}`, "success");
     };
 
     function setupSocketListeners() {
       socket.on("updateQueue", (queue) => {
+        console.log("Queue updated:", queue);
         const queueList = document.getElementById("queueList");
         if (queue.length === 0) {
           queueList.innerHTML = `
@@ -611,6 +677,7 @@
       });
 
       socket.on("updateUsers", (users) => {
+        console.log("Users updated:", users);
         const userList = document.getElementById("userList");
         userList.innerHTML = "";
         
@@ -633,6 +700,7 @@
       });
 
       socket.on("playVideo", (data) => {
+        console.log("Play video:", data);
         updateVideoTitle(data.videoId);
         
         if (player) {
@@ -657,6 +725,7 @@
       });
 
       socket.on("videoStopped", () => {
+        console.log("Video stopped");
         if (player) {
           player.stopVideo();
         }
@@ -694,6 +763,7 @@
       });
 
       socket.on("skipVoteUpdate", (data) => {
+        console.log("Skip vote update:", data);
         const skipStatus = document.getElementById("skipVoteStatus");
         skipStatus.style.display = "block";
         skipStatus.innerHTML = `
@@ -716,16 +786,21 @@
 
     document.getElementById("addVideoBtn").onclick = () => {
       const url = document.getElementById("videoInput").value.trim();
-      if (!url) return showNotification("Please enter a video URL", "error");
+      if (!url) {
+        showNotification("Please enter a video URL", "error");
+        return;
+      }
       
       const videoId = extractVideoID(url);
+      console.log("Adding video:", videoId);
       socket.emit("addVideo", { roomId: currentRoom, videoId });
       document.getElementById("videoInput").value = "";
       showNotification("Video added to queue", "success");
     };
 
     document.getElementById("skipBtn").onclick = () => {
-      if (currentRoom) {
+      if (currentRoom && socket) {
+        console.log("Voting to skip");
         socket.emit("voteSkip", currentRoom);
         hasVotedSkip = !hasVotedSkip;
         
@@ -741,17 +816,20 @@
     };
 
     document.getElementById("readyBtn").onclick = () => {
-      isReady = !isReady;
-      socket.emit("toggleReady", currentRoom);
-      const btn = document.getElementById("readyBtn");
-      if (isReady) {
-        btn.textContent = "Not Ready";
-        btn.className = "danger";
-        showNotification("You are now ready!", "success");
-      } else {
-        btn.textContent = "Ready";
-        btn.className = "ready";
-        showNotification("You are no longer ready", "info");
+      if (currentRoom && socket) {
+        console.log("Toggling ready state");
+        isReady = !isReady;
+        socket.emit("toggleReady", currentRoom);
+        const btn = document.getElementById("readyBtn");
+        if (isReady) {
+          btn.textContent = "Not Ready";
+          btn.className = "danger";
+          showNotification("You are now ready!", "success");
+        } else {
+          btn.textContent = "Ready";
+          btn.className = "ready";
+          showNotification("You are no longer ready", "info");
+        }
       }
     };
 
@@ -776,7 +854,7 @@
     }
 
     function onPlayerReady(event) {
-      // Auto-resize player to maintain aspect ratio
+      console.log("YouTube player ready");
       const iframe = event.target.getIframe();
       iframe.style.aspectRatio = '16/9';
       iframe.style.width = '100%';
@@ -787,12 +865,15 @@
       if (syncingVideo) return;
 
       if (event.data === YT.PlayerState.ENDED) {
+        console.log("Video ended");
         socket.emit("videoEnded", currentRoom);
       } else if (event.data === YT.PlayerState.PAUSED) {
         const currentTime = player.getCurrentTime();
+        console.log("Video paused at", currentTime);
         socket.emit("pauseVideo", { roomId: currentRoom, currentTime });
       } else if (event.data === YT.PlayerState.PLAYING) {
         const currentTime = player.getCurrentTime();
+        console.log("Video playing at", currentTime);
         socket.emit("playVideo", { roomId: currentRoom, currentTime });
       }
     }
