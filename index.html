@@ -909,7 +909,10 @@
         socket.on("connect", () => {
           console.log("Connected to server");
           updateConnectionStatus(true);
-          checkRoom(room, name);
+          // Add a small delay to ensure server is ready
+          setTimeout(() => {
+            checkRoom(room, name);
+          }, 100);
         });
 
         socket.on("disconnect", () => {
@@ -970,17 +973,54 @@
     // Video search functionality
     async function searchVideos(query) {
       try {
+        console.log("Searching for:", query);
+        
+        // Show loading state
+        const searchBtn = document.getElementById("searchBtn");
+        const originalText = searchBtn.textContent;
+        searchBtn.textContent = "Searching...";
+        searchBtn.disabled = true;
+        
+        document.getElementById("searchResults").innerHTML = `
+          <div style="padding: 20px; text-align: center; color: #888;">
+            <p>Searching for "${query}"...</p>
+          </div>
+        `;
+        document.getElementById("searchResults").style.display = "block";
+        
         const response = await fetch(`${SERVER_URL}/api/search?q=${encodeURIComponent(query)}`);
         const data = await response.json();
         
-        if (data.videos) {
+        console.log("Search response:", data);
+        
+        if (response.ok && data.videos && data.videos.length > 0) {
           displaySearchResults(data.videos);
+          showNotification(`Found ${data.videos.length} videos`, "success");
         } else {
-          showNotification("No videos found", "info");
+          console.error("Search failed:", data);
+          showNotification(data.error || "No videos found", "warning");
+          document.getElementById("searchResults").innerHTML = `
+            <div style="padding: 20px; text-align: center; color: #888;">
+              <p>No videos found for "${query}"</p>
+              <p style="font-size: 12px;">Try a different search term</p>
+              ${data.details ? `<p style="font-size: 11px; color: #666; margin-top: 10px;">Error: ${data.details}</p>` : ''}
+            </div>
+          `;
+          document.getElementById("searchResults").style.display = "block";
         }
+        
+        // Reset button
+        searchBtn.textContent = originalText;
+        searchBtn.disabled = false;
+        
       } catch (error) {
         console.error("Search error:", error);
-        showNotification("Search failed", "error");
+        showNotification("Search failed - check connection", "error");
+        
+        // Reset button
+        const searchBtn = document.getElementById("searchBtn");
+        searchBtn.textContent = "Search";
+        searchBtn.disabled = false;
       }
     }
 
@@ -1159,6 +1199,23 @@
     // Initialize invite check when page loads
     window.addEventListener('load', checkInviteRoom);
 
+    // Handle page visibility for multi-tab scenarios
+    let isTabActive = true;
+    document.addEventListener('visibilitychange', () => {
+      isTabActive = !document.hidden;
+      console.log('Tab visibility changed:', isTabActive ? 'active' : 'hidden');
+      
+      if (isTabActive && currentRoom && socket && socket.connected) {
+        // Refresh room state when tab becomes active
+        setTimeout(() => {
+          console.log('Refreshing room state after tab activation');
+          if (socket && socket.connected) {
+            socket.emit("refreshRoomState", currentRoom);
+          }
+        }, 500);
+      }
+    });
+
     // Remove video from queue
     function removeFromQueue(queueIndex) {
       if (currentRoom && socket) {
@@ -1200,9 +1257,24 @@
       });
 
       socket.on("roomJoined", (data) => {
+        console.log("Successfully joined room:", data);
+        currentRoom = data.roomId;
         showNotification(`${data.isCreator ? 'Created' : 'Joined'} room: ${data.roomId}`, "success");
         document.getElementById("loginSection").style.display = "none";
         document.getElementById("appSection").style.display = "block";
+        
+        // Reset UI state for new room
+        document.getElementById("skipVoteStatus").style.display = "none";
+        document.getElementById("kickVoteStatus").style.display = "none";
+        hasVotedSkip = false;
+        currentSkipVotes = { votes: 0, total: 0 };
+        currentKickVotes = {};
+        
+        // Reset ready button
+        const readyBtn = document.getElementById("readyBtn");
+        readyBtn.textContent = "Ready";
+        readyBtn.className = "btn-standard ready";
+        isReady = false;
       });
 
       socket.on("roomError", (message) => {
@@ -1250,6 +1322,12 @@
       socket.on("updateUsers", (users) => {
         console.log("Users updated:", users);
         const userList = document.getElementById("userList");
+        
+        if (!users || users.length === 0) {
+          userList.innerHTML = '<div style="color: #888; text-align: center; padding: 10px;">No users in room</div>';
+          return;
+        }
+        
         userList.innerHTML = "";
         
         // Update current users map
@@ -1267,6 +1345,9 @@
           userDiv.style.alignItems = "center";
           userDiv.style.justifyContent = "space-between";
           userDiv.style.width = "100%";
+          userDiv.style.padding = "8px 12px";
+          userDiv.style.marginBottom = "5px";
+          userDiv.style.borderRadius = "8px";
           
           userDiv.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
@@ -1280,6 +1361,8 @@
           userList.appendChild(userDiv);
           if (user.ready) readyCount++;
         });
+        
+        console.log(`Displayed ${users.length} users, ${readyCount} ready`);
 
         const readyStatus = document.getElementById("readyStatus");
         let statusHTML = `<strong>${readyCount}/${users.length}</strong> users ready`;
@@ -1389,6 +1472,20 @@
           syncingVideo = true;
           player.seekTo(currentTime, true);
           setTimeout(() => { syncingVideo = false; }, 1000); // Increased from 500ms
+        }
+      });
+
+      socket.on("syncTime", (data) => {
+        console.log("Syncing time for new user:", data);
+        if (player && player.seekTo) {
+          syncingVideo = true;
+          player.seekTo(data.currentTime, true);
+          if (data.isPaused) {
+            player.pauseVideo();
+          } else {
+            player.playVideo();
+          }
+          setTimeout(() => { syncingVideo = false; }, 1500);
         }
       });
 
