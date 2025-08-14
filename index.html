@@ -204,7 +204,7 @@
       color: #aaa;
     }
 
-    button {
+    button, .btn-standard {
       padding: 12px 20px;
       background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
@@ -217,6 +217,8 @@
       backdrop-filter: blur(10px);
       position: relative;
       overflow: hidden;
+      min-width: 100px;
+      text-align: center;
     }
 
     button:hover {
@@ -372,11 +374,53 @@
       border-radius: 12px;
       margin-bottom: 10px;
       transition: all 0.3s ease;
+      position: relative;
     }
 
     .queue-item:hover {
       background: rgba(255, 255, 255, 0.1);
       transform: translateX(5px);
+    }
+
+    .queue-item .remove-btn {
+      padding: 6px 10px;
+      font-size: 11px;
+      background: rgba(255, 107, 107, 0.2);
+      border: 1px solid rgba(255, 107, 107, 0.3);
+      color: #ff6b6b;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      font-weight: 500;
+      min-width: 60px;
+    }
+
+    .queue-item .remove-btn:hover {
+      background: rgba(255, 107, 107, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .vote-progress {
+      margin-top: 10px;
+      padding: 10px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .vote-bar {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 5px;
+    }
+
+    .vote-progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #ff6b6b, #ff8e53);
+      transition: width 0.3s ease;
     }
 
     .queue-number {
@@ -702,26 +746,26 @@
           </div>
 
           <div class="controls">
-            <div class="search-container" style="width: 100%; margin-bottom: 15px;">
-              <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                <input type="text" id="searchInput" placeholder="Search YouTube videos..." style="flex: 1;">
-                <button id="searchBtn" class="secondary">Search</button>
-              </div>
-              <div id="searchResults" class="search-results"></div>
-            </div>
-            
             <div style="display: flex; gap: 15px; flex-wrap: wrap; margin-bottom: 15px;">
               <div class="input-group" style="flex: 1; min-width: 300px;">
                 <input type="text" id="videoInput" placeholder="Paste YouTube/Vimeo/Twitch URL">
               </div>
-              <button id="addVideoBtn">Add Video</button>
+              <button id="addVideoBtn" class="btn-standard">Add Video</button>
             </div>
             
-            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-              <button id="readyBtn" class="ready">Ready</button>
-              <button id="skipBtn" class="secondary">Vote Skip</button>
-              <button id="pipBtn" class="secondary">Picture-in-Picture</button>
-              <button id="inviteBtn" class="secondary">Invite</button>
+            <div class="search-container" style="width: 100%; margin-bottom: 15px;">
+              <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                <input type="text" id="searchInput" placeholder="Search YouTube videos & live streams..." style="flex: 1;">
+                <button id="searchBtn" class="btn-standard secondary">Search</button>
+              </div>
+              <div id="searchResults" class="search-results"></div>
+            </div>
+            
+            <div class="button-row" style="display: flex; gap: 10px; flex-wrap: wrap;">
+              <button id="readyBtn" class="btn-standard ready">Ready</button>
+              <button id="skipBtn" class="btn-standard secondary">Vote Skip</button>
+              <button id="pipBtn" class="btn-standard secondary">Picture-in-Picture</button>
+              <button id="inviteBtn" class="btn-standard secondary">Invite</button>
             </div>
           </div>
         </div>
@@ -782,6 +826,8 @@
     let pipPlayer = null;
     let isPiPActive = false;
     let pipSize = 'normal'; // 'normal' or 'large'
+    let currentSkipVotes = { votes: 0, total: 0 };
+    let currentKickVotes = {}; // { targetUser: { votes: 0, total: 0, required: 0 } }
 
     // Use same domain for frontend and backend (Railway serves everything)
     const SERVER_URL = window.location.origin;
@@ -953,10 +999,22 @@
     }
 
     function addSearchResult(videoId, title) {
-      document.getElementById("videoInput").value = `https://youtube.com/watch?v=${videoId}`;
+      const videoUrl = `https://youtube.com/watch?v=${videoId}`;
+      
+      // Automatically add to queue instead of just filling input
+      if (currentRoom && socket) {
+        console.log("Adding video from search:", videoUrl);
+        socket.emit("addVideo", { roomId: currentRoom, videoUrl: videoUrl });
+        showNotification(`Added: ${title}`, "success");
+      } else {
+        // Fallback: just fill the input
+        document.getElementById("videoInput").value = videoUrl;
+        showNotification(`Selected: ${title}`, "info");
+      }
+      
+      // Hide search results and clear search
       document.getElementById("searchResults").style.display = 'none';
       document.getElementById("searchInput").value = '';
-      showNotification(`Selected: ${title}`, "success");
     }
 
     // Picture-in-Picture functionality
@@ -1101,6 +1159,15 @@
     // Initialize invite check when page loads
     window.addEventListener('load', checkInviteRoom);
 
+    // Remove video from queue
+    function removeFromQueue(queueIndex) {
+      if (currentRoom && socket) {
+        console.log("Removing video from queue at index:", queueIndex);
+        socket.emit("removeFromQueue", { roomId: currentRoom, queueIndex: queueIndex });
+        showNotification("Video removed from queue", "info");
+      }
+    }
+
     function setupSocketListeners() {
       socket.on("roomStatus", (data) => {
         const name = document.getElementById("nameInput").value.trim();
@@ -1169,10 +1236,11 @@
             return `
               <div class="queue-item">
                 <div class="queue-number">${index + 1}</div>
-                <div class="queue-title">
+                <div class="queue-title" style="flex: 1;">
                   <div style="font-weight: 500;">${title}</div>
                   ${channel ? `<div style="font-size: 12px; color: #888; margin-top: 2px;">${channel}</div>` : ''}
                 </div>
+                <button class="remove-btn" onclick="removeFromQueue(${index})" title="Remove from queue">Remove</button>
               </div>
             `;
           }).join('');
@@ -1214,9 +1282,43 @@
         });
 
         const readyStatus = document.getElementById("readyStatus");
-        readyStatus.innerHTML = `
-          <strong>${readyCount}/${users.length}</strong> users ready
-        `;
+        let statusHTML = `<strong>${readyCount}/${users.length}</strong> users ready`;
+        
+        // Add skip vote progress if active
+        if (currentSkipVotes.votes > 0) {
+          const skipPercent = (currentSkipVotes.votes / currentSkipVotes.total) * 100;
+          statusHTML += `
+            <div class="vote-progress">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                <span style="font-size: 12px; color: #ff6b6b;">Skip Vote Progress</span>
+                <span style="font-size: 12px;">${currentSkipVotes.votes}/${currentSkipVotes.total}</span>
+              </div>
+              <div class="vote-bar">
+                <div class="vote-progress-fill" style="width: ${skipPercent}%;"></div>
+              </div>
+            </div>
+          `;
+        }
+        
+        // Add kick vote progress if active
+        Object.entries(currentKickVotes).forEach(([targetUser, voteData]) => {
+          if (voteData.votes > 0) {
+            const kickPercent = (voteData.votes / voteData.required) * 100;
+            statusHTML += `
+              <div class="vote-progress">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                  <span style="font-size: 12px; color: #ffa500;">Kick ${targetUser}</span>
+                  <span style="font-size: 12px;">${voteData.votes}/${voteData.required}</span>
+                </div>
+                <div class="vote-bar">
+                  <div class="vote-progress-fill" style="width: ${kickPercent}%; background: linear-gradient(90deg, #ffa500, #ff6348);"></div>
+                </div>
+              </div>
+            `;
+          }
+        });
+        
+        readyStatus.innerHTML = statusHTML;
       });
 
       socket.on("playVideo", (data) => {
@@ -1296,6 +1398,10 @@
 
       socket.on("skipVoteUpdate", (data) => {
         console.log("Skip vote update:", data);
+        
+        // Update global skip vote tracking
+        currentSkipVotes = { votes: data.votes, total: data.total };
+        
         const skipStatus = document.getElementById("skipVoteStatus");
         
         if (data.votes > 0) {
@@ -1308,6 +1414,9 @@
           skipStatus.style.display = "none";
         }
         
+        // Trigger users update to show progress
+        socket.emit("getUserUpdate", currentRoom);
+        
         if (data.action === "added") {
           showNotification(`${data.user} voted to skip (${data.votes}/${data.total})`, "warning");
         } else {
@@ -1318,10 +1427,24 @@
       socket.on("videoSkipped", (data) => {
         showNotification("Video skipped by vote!", "warning");
         document.getElementById("skipVoteStatus").style.display = "none";
+        // Reset skip vote tracking
+        currentSkipVotes = { votes: 0, total: 0 };
       });
 
       socket.on("kickVoteUpdate", (data) => {
         console.log("Kick vote update:", data);
+        
+        // Update global kick vote tracking
+        if (data.votes > 0) {
+          currentKickVotes[data.targetUser] = {
+            votes: data.votes,
+            total: data.total,
+            required: data.required || Math.ceil((data.total - 1) / 2)
+          };
+        } else {
+          delete currentKickVotes[data.targetUser];
+        }
+        
         const kickStatus = document.getElementById("kickVoteStatus");
         
         if (data.votes > 0) {
@@ -1334,6 +1457,9 @@
           kickStatus.style.display = "none";
         }
         
+        // Trigger users update to show progress
+        socket.emit("getUserUpdate", currentRoom);
+        
         if (data.action === "added") {
           showNotification(`${data.voter} voted to kick ${data.targetUser} (${data.votes}/${data.required || data.total})`, "warning");
         } else {
@@ -1345,6 +1471,8 @@
         showNotification(`${data.user} was kicked from the room`, "warning");
         document.getElementById("kickVoteStatus").style.display = "none";
         userKickVotes.clear();
+        // Reset kick vote tracking for this user
+        delete currentKickVotes[data.user];
       });
 
       socket.on("kicked", (data) => {
@@ -1361,6 +1489,10 @@
 
       socket.on("userLeft", (data) => {
         showNotification(`${data.userName} left the room`, "info");
+      });
+
+      socket.on("videoRemoved", (data) => {
+        showNotification(`${data.user} removed: ${data.videoInfo.title}`, "warning");
       });
     }
 
