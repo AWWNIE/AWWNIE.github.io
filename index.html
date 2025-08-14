@@ -774,8 +774,8 @@
     let isPiPActive = false;
     let pipSize = 'normal'; // 'normal' or 'large'
 
-    // Railway deployment URL
-    const SERVER_URL = "https://watchtogether-production-61dc.up.railway.app/";
+    // Use same domain for frontend and backend (Railway serves everything)
+    const SERVER_URL = window.location.origin;
 
     function extractVideoID(url) {
       const match = url.match(/[?&]v=([^&]+)/);
