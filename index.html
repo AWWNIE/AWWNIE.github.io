@@ -701,6 +701,37 @@
         max-width: 280px;
       }
     }
+
+    /* Admin icon styles */
+    .admin-icon {
+      font-size: 16px;
+      margin-left: 5px;
+      filter: drop-shadow(0 0 3px #ffd700);
+      animation: adminGlow 2s ease-in-out infinite alternate;
+    }
+
+    @keyframes adminGlow {
+      from { filter: drop-shadow(0 0 3px #ffd700); }
+      to { filter: drop-shadow(0 0 8px #ffd700); }
+    }
+
+    /* Kick button styles */
+    .kick-btn {
+      background: #dc3545;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      cursor: pointer;
+      opacity: 0.8;
+      transition: all 0.2s ease;
+    }
+
+    .kick-btn:hover {
+      opacity: 1;
+      transform: scale(1.05);
+    }
   </style>
 </head>
 <body>
@@ -828,6 +859,8 @@
     let pipSize = 'normal'; // 'normal' or 'large'
     let currentSkipVotes = { votes: 0, total: 0 };
     let currentKickVotes = {}; // { targetUser: { votes: 0, total: 0, required: 0 } }
+    let isLeavingRoom = false; // Flag to prevent state broadcasts when leaving
+    let currentUserData = null; // Store current user data including admin status
 
     // Use same domain for frontend and backend (Railway serves everything)
     const SERVER_URL = window.location.origin;
@@ -908,6 +941,7 @@
         
         socket.on("connect", () => {
           console.log("Connected to server");
+          isLeavingRoom = false; // Reset flag when connected
           updateConnectionStatus(true);
           // Add a small delay to ensure server is ready
           setTimeout(() => {
@@ -917,6 +951,7 @@
 
         socket.on("disconnect", () => {
           console.log("Disconnected from server");
+          isLeavingRoom = true; // Prevent state broadcasts when disconnected
           updateConnectionStatus(false);
           showNotification("Disconnected from server", "error");
         });
@@ -1057,14 +1092,60 @@
       document.getElementById("searchInput").value = '';
     }
 
+    // Mobile device detection
+    function isMobileDevice() {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+             (navigator.maxTouchPoints && navigator.maxTouchPoints > 2 && /MacIntel/.test(navigator.platform));
+    }
+
     // Picture-in-Picture functionality
     function enablePiP() {
       if (!player || isPiPActive) return;
       
+      // Check if mobile device
+      if (isMobileDevice()) {
+        // For mobile, try native PiP API first
+        if (player.getIframe && player.getIframe().requestPictureInPicture) {
+          try {
+            player.getIframe().requestPictureInPicture()
+              .then(() => {
+                isPiPActive = true;
+                showNotification("Native Picture-in-Picture enabled", "success");
+              })
+              .catch((error) => {
+                console.log('Native PiP failed, showing mobile warning:', error);
+                showNotification("Picture-in-Picture not supported on mobile", "warning");
+              });
+            return;
+          } catch (e) {
+            console.log('Native PiP not available:', e);
+          }
+        }
+        
+        // Fallback: Show warning for mobile users
+        showNotification("Picture-in-Picture may not work properly on mobile devices", "warning");
+        
+        // Don't create separate player instance on mobile to avoid conflicts
+        // Instead, just minimize the main video container
+        const videoSection = document.querySelector('.video-section');
+        videoSection.style.position = 'fixed';
+        videoSection.style.bottom = '20px';
+        videoSection.style.right = '20px';
+        videoSection.style.width = '300px';
+        videoSection.style.height = 'auto';
+        videoSection.style.zIndex = '1000';
+        videoSection.style.resize = 'both';
+        videoSection.style.overflow = 'auto';
+        
+        isPiPActive = true;
+        showNotification("Mobile PiP mode enabled (minimized player)", "info");
+        return;
+      }
+      
       const pipContainer = document.getElementById("pipContainer");
       const pipVideo = document.getElementById("pipVideo");
       
-      // Create new player for PiP
+      // Create new player for PiP (desktop only)
       pipPlayer = new YT.Player('pipVideo', {
         height: '100%',
         width: '100%',
@@ -1073,7 +1154,9 @@
           'autoplay': 1,
           'controls': 1,
           'modestbranding': 1,
-          'rel': 0
+          'rel': 0,
+          'enablejsapi': 1,
+          'origin': window.location.origin
         },
         events: {
           'onReady': (event) => {
@@ -1083,6 +1166,10 @@
             } else {
               pipPlayer.pauseVideo();
             }
+          },
+          'onStateChange': (event) => {
+            // Prevent PiP player from affecting main player state
+            // Only sync if explicitly needed
           }
         }
       });
@@ -1097,6 +1184,30 @@
     }
 
     function closePiP() {
+      // Handle mobile PiP mode
+      if (isMobileDevice()) {
+        const videoSection = document.querySelector('.video-section');
+        // Reset video section position
+        videoSection.style.position = '';
+        videoSection.style.bottom = '';
+        videoSection.style.right = '';
+        videoSection.style.width = '';
+        videoSection.style.height = '';
+        videoSection.style.zIndex = '';
+        videoSection.style.resize = '';
+        videoSection.style.overflow = '';
+        
+        // Try to exit native PiP if active
+        if (document.pictureInPictureElement) {
+          document.exitPictureInPicture().catch(console.log);
+        }
+        
+        isPiPActive = false;
+        showNotification("Picture-in-Picture disabled", "info");
+        return;
+      }
+      
+      // Desktop PiP handling
       const pipContainer = document.getElementById("pipContainer");
       pipContainer.style.display = 'none';
       
@@ -1214,7 +1325,68 @@
           }
         }, 500);
       }
+      
+      // Handle mobile PiP when tab goes hidden
+      if (!isTabActive && isPiPActive && isMobileDevice()) {
+        console.log('Tab hidden with mobile PiP active - preventing stream disruption');
+        // Don't actually close PiP on mobile when tab goes hidden
+        // This prevents disrupting the stream for other users
+      }
     });
+
+    // Handle browser close/page unload - prevent PiP from affecting others
+    window.addEventListener('beforeunload', () => {
+      isLeavingRoom = true; // Prevent state broadcasts during page unload
+      
+      if (isPiPActive && isMobileDevice()) {
+        // Cleanly close mobile PiP before page unload
+        if (document.pictureInPictureElement) {
+          document.exitPictureInPicture().catch(() => {});
+        }
+        // Reset video section styles
+        const videoSection = document.querySelector('.video-section');
+        if (videoSection) {
+          videoSection.style.cssText = '';
+        }
+      }
+    });
+
+    // Handle page hide (mobile browsers)
+    window.addEventListener('pagehide', () => {
+      isLeavingRoom = true; // Prevent state broadcasts during page hide
+      
+      if (isPiPActive && isMobileDevice()) {
+        console.log('Page hidden on mobile with PiP - cleaning up');
+        // Exit native PiP if active
+        if (document.pictureInPictureElement) {
+          document.exitPictureInPicture().catch(() => {});
+        }
+      }
+    });
+
+    // Helper function to check if current user is admin
+    function isCurrentUserAdmin() {
+      return currentUserData && currentUserData.isAdmin;
+    }
+
+    // Helper function to find current user in user list
+    function getCurrentUserFromList(users) {
+      const currentName = document.getElementById("nameInput").value;
+      return users.find(user => user.name === currentName);
+    }
+
+    // Updated kick function (admin only, direct kick)
+    function kickUser(userId, userName) {
+      if (!isCurrentUserAdmin()) {
+        showNotification("Only admin can kick users", "error");
+        return;
+      }
+
+      if (currentRoom && socket) {
+        console.log("Admin kicking user:", userName);
+        socket.emit("voteKick", { roomId: currentRoom, targetUserName: userName });
+      }
+    }
 
     // Remove video from queue
     function removeFromQueue(queueIndex) {
@@ -1339,6 +1511,12 @@
           const userId = `user_${index}_${user.name}`;
           currentUsers.set(user.name, userId);
           
+          // Store current user data for admin checking
+          const currentUserName = document.getElementById("nameInput").value;
+          if (user.name === currentUserName) {
+            currentUserData = user;
+          }
+          
           const userDiv = document.createElement("div");
           userDiv.className = "user" + (user.ready ? " ready" : "");
           userDiv.style.display = "flex";
@@ -1353,9 +1531,10 @@
             <div style="display: flex; align-items: center; gap: 8px;">
               <div class="user-status"></div>
               <span>${user.name}</span>
+              ${user.isAdmin ? '<span class="admin-icon" title="Room Admin">👑</span>' : ''}
             </div>
             <div class="user-actions">
-              <button class="kick-btn" onclick="voteKick('${userId}', '${user.name}')" title="Vote to kick ${user.name}">Kick</button>
+              ${user.isAdmin ? '' : `<button class="kick-btn" onclick="kickUser('${userId}', '${user.name}')" title="Kick ${user.name}" ${!isCurrentUserAdmin() ? 'style="display:none"' : ''}>Kick</button>`}
             </div>
           `;
           userList.appendChild(userDiv);
@@ -1439,6 +1618,10 @@
 
       socket.on("videoError", (data) => {
         showNotification(data.message, "error");
+      });
+
+      socket.on("kickError", (message) => {
+        showNotification(message, "error");
       });
 
       socket.on("videoStopped", () => {
@@ -1565,7 +1748,10 @@
       });
 
       socket.on("userKicked", (data) => {
-        showNotification(`${data.user} was kicked from the room`, "warning");
+        const kickMessage = data.reason === "admin" && data.kickedBy 
+          ? `${data.user} was kicked by admin ${data.kickedBy}` 
+          : `${data.user} was kicked from the room`;
+        showNotification(kickMessage, "warning");
         document.getElementById("kickVoteStatus").style.display = "none";
         userKickVotes.clear();
         // Reset kick vote tracking for this user
@@ -1573,6 +1759,7 @@
       });
 
       socket.on("kicked", (data) => {
+        isLeavingRoom = true; // Prevent state broadcasts when being kicked
         showNotification(`You were kicked from room ${data.room}`, "error");
         // Reset to login screen
         document.getElementById("appSection").style.display = "none";
@@ -1705,7 +1892,10 @@
     }
 
     function onPlayerStateChange(event) {
-      if (syncingVideo) return;
+      if (syncingVideo || isLeavingRoom) return;
+      
+      // Additional check: don't broadcast state changes if socket is disconnected
+      if (!socket || !socket.connected || !currentRoom) return;
 
       if (event.data === YT.PlayerState.ENDED) {
         console.log("Video ended");
