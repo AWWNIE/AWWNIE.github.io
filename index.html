@@ -50,7 +50,7 @@
       currentRoom = room;
       document.getElementById("app").style.display = "block";
 
-      socket = io("https://YOUR_BACKEND_URL"); // Replace with Railway URL
+      socket = io("https://awwniegithubio-production.up.railway.app/"); // Replace with Railway URL
       socket.emit("joinRoom", room, name);
 
       socket.on("updateQueue", (queue) => {
