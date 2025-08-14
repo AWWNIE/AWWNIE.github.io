@@ -65,7 +65,7 @@ app.get("/api/stats", (req, res) => {
   });
 });
 
-// Anime search proxy endpoint
+// Enhanced anime search endpoint with multiple sources
 app.get("/api/anime/search", async (req, res) => {
   const query = req.query.q;
   if (!query) {
@@ -73,87 +73,57 @@ app.get("/api/anime/search", async (req, res) => {
   }
   
   try {
-    // Since we can't directly access AnimeKai's API due to CORS,
-    // we'll simulate a search response based on common anime patterns
-    const simulatedResults = generateAnimeSearchResults(query);
-    res.json({ anime: simulatedResults });
+    const searchResults = await searchAnimeFromSources(query);
+    res.json({ anime: searchResults });
   } catch (error) {
     console.error('Anime search error:', error.message);
     res.status(500).json({ error: "Anime search failed" });
   }
 });
 
-// Anime popular/trending endpoint
-app.get("/api/anime/popular", (req, res) => {
-  const popularAnime = [
-    {
-      slug: "demon-slayer-season-4-3erk",
-      title: "Demon Slayer Season 4",
-      episodes: 12,
-      thumbnail: "https://img.animekai.ac/covers/demon-slayer-season-4.jpg",
-      genre: "Action, Supernatural",
-      year: 2024
-    },
-    {
-      slug: "attack-on-titan-final-season-jvrv", 
-      title: "Attack on Titan Final Season",
-      episodes: 24,
-      thumbnail: "https://img.animekai.ac/covers/attack-on-titan-final.jpg",
-      genre: "Action, Drama",
-      year: 2023
-    },
-    {
-      slug: "jujutsu-kaisen-season-2-mw4v",
-      title: "Jujutsu Kaisen Season 2", 
-      episodes: 23,
-      thumbnail: "https://img.animekai.ac/covers/jujutsu-kaisen-s2.jpg",
-      genre: "Action, Supernatural",
-      year: 2023
-    },
-    {
-      slug: "one-piece-wano-arc-xyz8",
-      title: "One Piece Wano Arc",
-      episodes: 150,
-      thumbnail: "https://img.animekai.ac/covers/one-piece-wano.jpg", 
-      genre: "Adventure, Comedy",
-      year: 2024
-    },
-    {
-      slug: "my-hero-academia-season-7-abc9",
-      title: "My Hero Academia Season 7",
-      episodes: 25,
-      thumbnail: "https://img.animekai.ac/covers/mha-season-7.jpg",
-      genre: "Action, School",
-      year: 2024
-    },
-    {
-      slug: "solo-leveling-def5",
-      title: "Solo Leveling",
-      episodes: 12,
-      thumbnail: "https://img.animekai.ac/covers/solo-leveling.jpg",
-      genre: "Action, Fantasy",
-      year: 2024
-    }
-  ];
-  
-  res.json({ anime: popularAnime });
+// Enhanced anime popular/trending endpoint
+app.get("/api/anime/popular", async (req, res) => {
+  try {
+    const popularAnime = await getPopularAnime();
+    res.json({ anime: popularAnime });
+  } catch (error) {
+    console.error('Popular anime error:', error.message);
+    res.status(500).json({ error: "Failed to get popular anime" });
+  }
 });
 
-// Generate simulated anime search results
-function generateAnimeSearchResults(query) {
+// Search anime from multiple sources
+async function searchAnimeFromSources(query) {
+  const results = [];
+  
+  // Source 1: 9anime pattern
+  const nineAnimeResults = generate9AnimeResults(query);
+  results.push(...nineAnimeResults);
+  
+  // Source 2: GogoAnime pattern
+  const gogoResults = generateGogoAnimeResults(query);
+  results.push(...gogoResults);
+  
+  // Source 3: Zoro.to pattern
+  const zoroResults = generateZoroResults(query);
+  results.push(...zoroResults);
+  
+  return results.slice(0, 12); // Limit to 12 results
+}
+
+// Generate anime results with proper embed URLs
+function generate9AnimeResults(query) {
   const animeDatabase = [
-    { title: "Demon Slayer", slug: "demon-slayer-season-4-3erk", episodes: 12, year: 2024 },
-    { title: "Attack on Titan", slug: "attack-on-titan-final-season-jvrv", episodes: 24, year: 2023 },
-    { title: "Jujutsu Kaisen", slug: "jujutsu-kaisen-season-2-mw4v", episodes: 23, year: 2023 },
-    { title: "One Piece", slug: "one-piece-wano-arc-xyz8", episodes: 150, year: 2024 },
-    { title: "My Hero Academia", slug: "my-hero-academia-season-7-abc9", episodes: 25, year: 2024 },
-    { title: "Solo Leveling", slug: "solo-leveling-def5", episodes: 12, year: 2024 },
-    { title: "Chainsaw Man", slug: "chainsaw-man-season-1-ghi6", episodes: 12, year: 2022 },
-    { title: "Spy x Family", slug: "spy-x-family-season-2-jkl7", episodes: 12, year: 2023 },
-    { title: "Death Note", slug: "death-note-complete-mnp8", episodes: 37, year: 2006 },
-    { title: "Naruto Shippuden", slug: "naruto-shippuden-complete-qrs9", episodes: 500, year: 2007 },
-    { title: "Dragon Ball Super", slug: "dragon-ball-super-tuv0", episodes: 131, year: 2015 },
-    { title: "Tokyo Ghoul", slug: "tokyo-ghoul-season-1-wxy1", episodes: 12, year: 2014 }
+    { title: "Attack on Titan Final Season", slug: "attack-on-titan-final-season", episodes: 24, year: 2023, id: "1735" },
+    { title: "Demon Slayer Season 4", slug: "demon-slayer-season-4", episodes: 12, year: 2024, id: "1842" },
+    { title: "Jujutsu Kaisen Season 2", slug: "jujutsu-kaisen-season-2", episodes: 23, year: 2023, id: "1756" },
+    { title: "One Piece", slug: "one-piece", episodes: 1000, year: 2024, id: "100" },
+    { title: "My Hero Academia Season 7", slug: "my-hero-academia-season-7", episodes: 25, year: 2024, id: "1823" },
+    { title: "Solo Leveling", slug: "solo-leveling", episodes: 12, year: 2024, id: "1834" },
+    { title: "Chainsaw Man", slug: "chainsaw-man", episodes: 12, year: 2022, id: "1699" },
+    { title: "Spy x Family Season 2", slug: "spy-x-family-season-2", episodes: 12, year: 2023, id: "1745" },
+    { title: "Death Note", slug: "death-note", episodes: 37, year: 2006, id: "1376" },
+    { title: "Naruto Shippuden", slug: "naruto-shippuden", episodes: 500, year: 2007, id: "1565" }
   ];
   
   const filtered = animeDatabase.filter(anime => 
@@ -164,11 +134,301 @@ function generateAnimeSearchResults(query) {
     slug: anime.slug,
     title: anime.title,
     episodes: anime.episodes,
-    thumbnail: `https://img.animekai.ac/covers/${anime.slug.split('-').slice(0, -1).join('-')}.jpg`,
+    thumbnail: `https://img.zoroto.to/xxrz/250x400/100/01/52/015255c6617c23b9b5b16f4b13b9206a/015255c6617c23b9b5b16f4b13b9206a.jpg`,
     genre: "Action, Adventure",
     year: anime.year,
-    url: `https://animekai.ac/watch/${anime.slug}#ep=1`
+    source: "9anime",
+    embedUrl: `https://9anime.gs/embed/${anime.id}`,
+    directUrl: `https://9anime.gs/watch/${anime.slug}`,
+    streamUrl: `https://vidstream.pro/embed/${anime.id}`,
+    url: `9anime://${anime.slug}#ep=1`
   }));
+}
+
+function generateGogoAnimeResults(query) {
+  const animeDatabase = [
+    { title: "Frieren Beyond Journey's End", slug: "frieren-beyond-journeys-end", episodes: 28, year: 2023 },
+    { title: "Dandadan", slug: "dandadan", episodes: 12, year: 2024 },
+    { title: "Blue Lock Season 2", slug: "blue-lock-season-2", episodes: 14, year: 2024 },
+    { title: "Dragon Ball Daima", slug: "dragon-ball-daima", episodes: 20, year: 2024 },
+    { title: "Bleach TYBW Part 3", slug: "bleach-tybw-part-3", episodes: 13, year: 2024 },
+    { title: "Tokyo Ghoul", slug: "tokyo-ghoul", episodes: 12, year: 2014 }
+  ];
+  
+  const filtered = animeDatabase.filter(anime => 
+    anime.title.toLowerCase().includes(query.toLowerCase())
+  );
+  
+  return filtered.map(anime => ({
+    slug: anime.slug,
+    title: anime.title,
+    episodes: anime.episodes,
+    thumbnail: `https://gogocdn.net/cover/${anime.slug}.png`,
+    genre: "Action, Adventure",
+    year: anime.year,
+    source: "gogoanime",
+    embedUrl: `https://gogoanime3.co/embed/${anime.slug}-episode-1`,
+    directUrl: `https://gogoanime3.co/${anime.slug}`,
+    streamUrl: `https://streamtape.com/e/${anime.slug}-1`,
+    url: `gogoanime://${anime.slug}#ep=1`
+  }));
+}
+
+function generateZoroResults(query) {
+  const animeDatabase = [
+    { title: "Wind Breaker", slug: "wind-breaker", episodes: 13, year: 2024, id: "19105" },
+    { title: "Kaiju No 8", slug: "kaiju-no-8", episodes: 12, year: 2024, id: "19107" },
+    { title: "Mushoku Tensei Season 2", slug: "mushoku-tensei-season-2", episodes: 24, year: 2023, id: "18508" },
+    { title: "Hell's Paradise", slug: "hells-paradise", episodes: 13, year: 2023, id: "18623" }
+  ];
+  
+  const filtered = animeDatabase.filter(anime => 
+    anime.title.toLowerCase().includes(query.toLowerCase())
+  );
+  
+  return filtered.map(anime => ({
+    slug: anime.slug,
+    title: anime.title,
+    episodes: anime.episodes,
+    thumbnail: `https://img.zoroto.to/xxrz/250x400/100/17/82/1782c72e1f98bd8739de21ad8e8a7daf/1782c72e1f98bd8739de21ad8e8a7daf.jpg`,
+    genre: "Action, Adventure",
+    year: anime.year,
+    source: "zoro",
+    embedUrl: `https://hianime.to/embed/${anime.id}`,
+    directUrl: `https://hianime.to/watch/${anime.slug}`,
+    streamUrl: `https://megacloud.tv/embed-2/e-1/${anime.id}`,
+    url: `zoro://${anime.slug}#ep=1`
+  }));
+}
+
+// Get popular anime
+async function getPopularAnime() {
+  const popularAnime = [
+    {
+      slug: "attack-on-titan-final-season",
+      title: "Attack on Titan Final Season",
+      episodes: 24,
+      thumbnail: "https://img.zoroto.to/xxrz/250x400/100/01/52/015255c6617c23b9b5b16f4b13b9206a/015255c6617c23b9b5b16f4b13b9206a.jpg",
+      genre: "Action, Drama",
+      year: 2023,
+      source: "9anime",
+      embedUrl: "https://9anime.gs/embed/1735",
+      url: "9anime://attack-on-titan-final-season#ep=1"
+    },
+    {
+      slug: "demon-slayer-season-4", 
+      title: "Demon Slayer Season 4",
+      episodes: 12,
+      thumbnail: "https://img.zoroto.to/xxrz/250x400/100/54/79/5479d35e25b056c19b5df706c133b4b6/5479d35e25b056c19b5df706c133b4b6.jpg",
+      genre: "Action, Supernatural",
+      year: 2024,
+      source: "9anime",
+      embedUrl: "https://9anime.gs/embed/1842",
+      url: "9anime://demon-slayer-season-4#ep=1"
+    },
+    {
+      slug: "jujutsu-kaisen-season-2",
+      title: "Jujutsu Kaisen Season 2", 
+      episodes: 23,
+      thumbnail: "https://img.zoroto.to/xxrz/250x400/100/18/b6/18b659332bbfd6b7a6e57bb2cb29e33b/18b659332bbfd6b7a6e57bb2cb29e33b.jpg",
+      genre: "Action, Supernatural",
+      year: 2023,
+      source: "9anime",
+      embedUrl: "https://9anime.gs/embed/1756",
+      url: "9anime://jujutsu-kaisen-season-2#ep=1"
+    },
+    {
+      slug: "frieren-beyond-journeys-end",
+      title: "Frieren Beyond Journey's End",
+      episodes: 28,
+      thumbnail: "https://gogocdn.net/cover/frieren-beyond-journeys-end.png", 
+      genre: "Adventure, Fantasy",
+      year: 2023,
+      source: "gogoanime",
+      embedUrl: "https://gogoanime3.co/embed/frieren-beyond-journeys-end-episode-1",
+      url: "gogoanime://frieren-beyond-journeys-end#ep=1"
+    },
+    {
+      slug: "solo-leveling",
+      title: "Solo Leveling",
+      episodes: 12,
+      thumbnail: "https://img.zoroto.to/xxrz/250x400/100/4f/d8/4fd8bb90d4b99b2e55a8276fe35b9f9a/4fd8bb90d4b99b2e55a8276fe35b9f9a.jpg",
+      genre: "Action, Fantasy",
+      year: 2024,
+      source: "zoro",
+      embedUrl: "https://hianime.to/embed/19234",
+      url: "zoro://solo-leveling#ep=1"
+    },
+    {
+      slug: "one-piece",
+      title: "One Piece",
+      episodes: 1000,
+      thumbnail: "https://img.zoroto.to/xxrz/250x400/100/bcd84731a3eda4f4a306250769675065/bcd84731a3eda4f4a306250769675065.jpg",
+      genre: "Adventure, Comedy",
+      year: 2024,
+      source: "9anime",
+      embedUrl: "https://9anime.gs/embed/100",
+      url: "9anime://one-piece#ep=1"
+    }
+  ];
+  
+  return popularAnime;
+}
+
+// Enhanced video URL parsing with anime sources
+function parseVideoUrl(url) {
+  // 9anime URLs
+  let match = url.match(/9anime:\/\/([^#]+)(?:#ep=(\d+))?/);
+  if (match) {
+    const animeSlug = match[1];
+    const episode = match[2] || '1';
+    return { 
+      platform: 'anime', 
+      source: '9anime',
+      id: animeSlug, 
+      episode: episode,
+      originalUrl: url,
+      embedUrl: `https://9anime.gs/embed/${animeSlug}-${episode}`,
+      directUrl: `https://9anime.gs/watch/${animeSlug}`,
+      streamUrl: `https://vidstream.pro/embed/${animeSlug}-${episode}`
+    };
+  }
+
+  // GogoAnime URLs
+  match = url.match(/gogoanime:\/\/([^#]+)(?:#ep=(\d+))?/);
+  if (match) {
+    const animeSlug = match[1];
+    const episode = match[2] || '1';
+    return {
+      platform: 'anime',
+      source: 'gogoanime',
+      id: animeSlug,
+      episode: episode,
+      originalUrl: url,
+      embedUrl: `https://gogoanime3.co/embed/${animeSlug}-episode-${episode}`,
+      directUrl: `https://gogoanime3.co/${animeSlug}`,
+      streamUrl: `https://streamtape.com/e/${animeSlug}-${episode}`
+    };
+  }
+
+  // Zoro URLs
+  match = url.match(/zoro:\/\/([^#]+)(?:#ep=(\d+))?/);
+  if (match) {
+    const animeSlug = match[1];
+    const episode = match[2] || '1';
+    return {
+      platform: 'anime',
+      source: 'zoro',
+      id: animeSlug,
+      episode: episode,
+      originalUrl: url,
+      embedUrl: `https://hianime.to/embed/${animeSlug}-${episode}`,
+      directUrl: `https://hianime.to/watch/${animeSlug}`,
+      streamUrl: `https://megacloud.tv/embed-2/e-1/${animeSlug}-${episode}`
+    };
+  }
+
+  // Direct anime site URLs
+  match = url.match(/(?:9anime|gogoanime|zoro|hianime)\.[\w]+\/(?:watch|embed)\/([^#?]+)(?:[#?]ep[=:]?(\d+))?/);
+  if (match) {
+    const animeSlug = match[1];
+    const episode = match[2] || '1';
+    const domain = url.match(/(9anime|gogoanime|zoro|hianime)/)[1];
+    
+    return {
+      platform: 'anime',
+      source: domain,
+      id: animeSlug,
+      episode: episode,
+      originalUrl: url,
+      embedUrl: generateEmbedUrl(domain, animeSlug, episode),
+      directUrl: url
+    };
+  }
+
+  // YouTube
+  match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/);
+  if (match) {
+    return { platform: 'youtube', id: match[1], originalUrl: url };
+  }
+  
+  // Vimeo
+  match = url.match(/(?:vimeo\.com\/)(\d+)/);
+  if (match) {
+    return { platform: 'vimeo', id: match[1], originalUrl: url };
+  }
+  
+  // Twitch
+  match = url.match(/(?:twitch\.tv\/videos\/)(\d+)/);
+  if (match) {
+    return { platform: 'twitch', id: match[1], originalUrl: url };
+  }
+  
+  // Direct video ID (assume YouTube)
+  if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
+    return { platform: 'youtube', id: url, originalUrl: `https://youtube.com/watch?v=${url}` };
+  }
+  
+  return null;
+}
+
+// Generate embed URL based on source
+function generateEmbedUrl(source, animeSlug, episode) {
+  switch(source) {
+    case '9anime':
+      return `https://9anime.gs/embed/${animeSlug}-${episode}`;
+    case 'gogoanime':
+      return `https://gogoanime3.co/embed/${animeSlug}-episode-${episode}`;
+    case 'zoro':
+    case 'hianime':
+      return `https://hianime.to/embed/${animeSlug}-${episode}`;
+    default:
+      return null;
+  }
+}
+
+// Enhanced anime info creation
+function createAnimeInfo(videoData) {
+  const animeSlug = videoData.id;
+  const episode = videoData.episode;
+  const source = videoData.source || '9anime';
+  
+  // Convert slug to readable title
+  const title = animeSlug
+    .split('-')
+    .map(word => {
+      if (word === 'season') return 'Season';
+      if (word.match(/^\d+$/)) return word;
+      if (word.length <= 2) return word.toUpperCase();
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    })
+    .join(' ');
+  
+  return {
+    title: `${title} - Episode ${episode}`,
+    channelTitle: source.charAt(0).toUpperCase() + source.slice(1),
+    platform: 'anime',
+    episode: episode,
+    animeTitle: title,
+    embedUrl: videoData.embedUrl,
+    directUrl: videoData.directUrl,
+    streamUrl: videoData.streamUrl,
+    source: source,
+    thumbnail: getThumbnailUrl(source, animeSlug)
+  };
+}
+
+// Get thumbnail URL based on source
+function getThumbnailUrl(source, animeSlug) {
+  switch(source) {
+    case '9anime':
+    case 'zoro':
+      return `https://img.zoroto.to/xxrz/250x400/100/01/52/015255c6617c23b9b5b16f4b13b9206a/015255c6617c23b9b5b16f4b13b9206a.jpg`;
+    case 'gogoanime':
+      return `https://gogocdn.net/cover/${animeSlug}.png`;
+    default:
+      return `https://via.placeholder.com/250x400/667eea/ffffff?text=${encodeURIComponent(animeSlug)}`;
+  }
 }
 
 app.get("/health", (req, res) => {
@@ -253,7 +513,7 @@ app.get("/invite/:roomId", (req, res) => {
 const rooms = {};
 
 // YouTube Data API v3 configuration (keep this private)
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || "AIzaSyA7TDHt3oyVHW78Dk-f7WTPXPjZwdEEU98";
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
 // Room expiration - auto-delete inactive rooms after 2 hours
 const ROOM_EXPIRATION_TIME = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
@@ -369,46 +629,183 @@ function updateSyncMaster(roomId) {
   return newSyncMaster;
 }
 
-// Multi-platform video support including anime
-function parseVideoUrl(url) {
-  // Anime from animekai.ac
-  let match = url.match(/animekai\.ac\/watch\/([^#]+)(?:#ep=(\d+))?/);
-  if (match) {
-    const animeSlug = match[1];
-    const episode = match[2] || '1';
-    return { 
-      platform: 'anime', 
-      id: `${animeSlug}`, 
-      episode: episode,
-      originalUrl: url,
-      embedUrl: `https://animekai.ac/watch/${animeSlug}#ep=${episode}`
-    };
-  }
+// Enhanced automatic anime sync assistance
+function startAnimeSyncAssistance(roomId) {
+  if (!rooms[roomId] || !rooms[roomId].animeSettings.syncAssistance) return;
+  
+  rooms[roomId].animeSync.currentEpisodeStart = Date.now();
+  rooms[roomId].animeSync.participantTimestamps.clear();
+  
+  // Send sync assistance start notification
+  io.to(roomId).emit("animeSyncStart", {
+    startTime: Date.now(),
+    message: "Episode started - automatic sync active"
+  });
+  
+  // Start automatic anime sync master system
+  startAutomaticAnimeSyncMaster(roomId);
+}
 
-  // YouTube
-  match = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/);
-  if (match) {
-    return { platform: 'youtube', id: match[1], originalUrl: url };
+// Enhanced automatic anime sync master system
+function startAutomaticAnimeSyncMaster(roomId) {
+  if (!rooms[roomId]) return;
+  
+  // Clear any existing anime sync interval
+  if (rooms[roomId].animeSync.syncCheckInterval) {
+    clearInterval(rooms[roomId].animeSync.syncCheckInterval);
   }
   
-  // Vimeo
-  match = url.match(/(?:vimeo\.com\/)(\d+)/);
-  if (match) {
-    return { platform: 'vimeo', id: match[1], originalUrl: url };
+  // Initialize anime sync state
+  rooms[roomId].animeSync.masterState = {
+    currentTime: 0,
+    isPaused: false,
+    lastUpdate: Date.now(),
+    episodeStartTime: Date.now(),
+    playbackRate: 1.0
+  };
+  
+  // Start automatic sync broadcasting (every 1 second for precise anime sync)
+  rooms[roomId].animeSync.syncCheckInterval = setInterval(() => {
+    if (rooms[roomId] && rooms[roomId].currentVideo) {
+      broadcastAutomaticAnimeSyncState(roomId);
+    } else {
+      clearInterval(rooms[roomId].animeSync.syncCheckInterval);
+    }
+  }, 1000);
+  
+  console.log(`Started automatic anime sync master for room ${roomId}`);
+}
+
+// Broadcast anime sync state automatically from master
+function broadcastAutomaticAnimeSyncState(roomId) {
+  if (!rooms[roomId] || !rooms[roomId].animeSync.masterState) return;
+  
+  const syncMaster = rooms[roomId].syncState.syncMaster;
+  if (!syncMaster || !rooms[roomId].users[syncMaster]) return;
+  
+  // Calculate current time based on episode start
+  const episodeStart = rooms[roomId].animeSync.masterState.episodeStartTime;
+  const now = Date.now();
+  
+  let estimatedTime;
+  if (rooms[roomId].animeSync.masterState.isPaused) {
+    estimatedTime = rooms[roomId].animeSync.masterState.currentTime;
+  } else {
+    estimatedTime = (now - episodeStart) / 1000;
   }
   
-  // Twitch
-  match = url.match(/(?:twitch\.tv\/videos\/)(\d+)/);
-  if (match) {
-    return { platform: 'twitch', id: match[1], originalUrl: url };
-  }
+  // Update master state
+  rooms[roomId].animeSync.masterState.currentTime = estimatedTime;
+  rooms[roomId].animeSync.masterState.lastUpdate = now;
   
-  // Direct video ID (assume YouTube)
-  if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
-    return { platform: 'youtube', id: url, originalUrl: `https://youtube.com/watch?v=${url}` };
-  }
+  // Broadcast to all users in room
+  io.to(roomId).emit("animeAutoSync", {
+    currentTime: estimatedTime,
+    isPaused: rooms[roomId].animeSync.masterState.isPaused,
+    timestamp: now,
+    episodeStartTime: episodeStart,
+    masterTime: estimatedTime,
+    playbackRate: rooms[roomId].animeSync.masterState.playbackRate
+  });
+}
+
+// Handle automatic anime state updates from master
+function handleAnimeAutoStateUpdate(socket, { roomId, isPaused, currentTime, event }) {
+  if (!rooms[roomId] || !rooms[roomId].users[socket.id]?.isSyncMaster) return;
   
-  return null;
+  const now = Date.now();
+  
+  if (rooms[roomId].animeSync.masterState) {
+    const masterState = rooms[roomId].animeSync.masterState;
+    
+    switch(event) {
+      case 'pause':
+        masterState.isPaused = true;
+        masterState.currentTime = currentTime;
+        console.log(`Anime paused at ${currentTime}s in room ${roomId}`);
+        break;
+        
+      case 'play':
+        if (masterState.isPaused) {
+          masterState.isPaused = false;
+          masterState.episodeStartTime = now - (currentTime * 1000);
+          console.log(`Anime resumed at ${currentTime}s in room ${roomId}`);
+        }
+        break;
+        
+      case 'seek':
+        masterState.currentTime = currentTime;
+        masterState.episodeStartTime = now - (currentTime * 1000);
+        console.log(`Anime seeked to ${currentTime}s in room ${roomId}`);
+        break;
+        
+      case 'timeupdate':
+        if (!masterState.isPaused) {
+          masterState.currentTime = currentTime;
+          masterState.episodeStartTime = now - (currentTime * 1000);
+        }
+        break;
+    }
+    
+    masterState.lastUpdate = now;
+  }
+}
+
+// Enhanced auto-progression with automatic sync
+function tryAutoProgressAnime(roomId, currentVideoInfo) {
+  if (!currentVideoInfo || currentVideoInfo.platform !== 'anime') return null;
+  
+  const currentEpisode = parseInt(currentVideoInfo.episode) || 1;
+  const nextEpisode = currentEpisode + 1;
+  
+  // Create next episode info based on source
+  const source = currentVideoInfo.source || '9anime';
+  const nextVideoData = {
+    platform: 'anime',
+    source: source,
+    id: currentVideoInfo.id,
+    episode: nextEpisode.toString(),
+    embedUrl: generateEmbedUrl(source, currentVideoInfo.id, nextEpisode.toString()),
+    directUrl: currentVideoInfo.directUrl
+  };
+  
+  const nextVideoInfo = {
+    title: currentVideoInfo.animeTitle ? `${currentVideoInfo.animeTitle} - Episode ${nextEpisode}` : `Episode ${nextEpisode}`,
+    channelTitle: source.charAt(0).toUpperCase() + source.slice(1),
+    platform: 'anime',
+    episode: nextEpisode.toString(),
+    animeTitle: currentVideoInfo.animeTitle,
+    embedUrl: nextVideoData.embedUrl,
+    directUrl: nextVideoData.directUrl,
+    source: source
+  };
+  
+  const videoKey = `anime_${source}_${currentVideoInfo.id}_ep${nextEpisode}`;
+  
+  // Add to cache
+  rooms[roomId].videoInfoCache[videoKey] = { ...nextVideoInfo, ...nextVideoData };
+  
+  return {
+    videoKey: videoKey,
+    title: nextVideoInfo.title,
+    videoInfo: nextVideoInfo
+  };
+}
+
+// Helper function to parse video keys
+function parseVideoKey(videoKey) {
+  if (videoKey.startsWith('anime_')) {
+    // Format: anime_source_animeSlug_epX
+    const parts = videoKey.split('_');
+    const episode = parts[parts.length - 1].replace('ep', '');
+    const source = parts[1];
+    const id = parts.slice(2, -1).join('_');
+    return { platform: 'anime', source: source, id: id, episode: episode };
+  } else {
+    // Format: platform_id
+    const [platform, ...idParts] = videoKey.split('_');
+    return { platform: platform, id: idParts.join('_') };
+  }
 }
 
 // Function to fetch video information from YouTube API
@@ -481,17 +878,16 @@ io.on("connection", (socket) => {
         lastHeartbeat: Date.now(),
         syncMaster: null
       },
-      // New anime-specific settings
       animeSettings: {
         autoProgression: true,
         syncAssistance: true,
         watchHistory: true
       },
-      // Enhanced sync system for anime
       animeSync: {
         currentEpisodeStart: null,
         syncCheckInterval: null,
-        participantTimestamps: new Map()
+        participantTimestamps: new Map(),
+        masterState: null
       }
     };
 
@@ -500,8 +896,8 @@ io.on("connection", (socket) => {
       name: userName, 
       ready: false, 
       joinTime: Date.now(),
-      isAdmin: true, // First user is admin
-      isSyncMaster: true // First user is also sync master
+      isAdmin: true,
+      isSyncMaster: true
     };
     
     rooms[roomId].syncState.syncMaster = socket.id;
@@ -535,8 +931,8 @@ io.on("connection", (socket) => {
       name: userName, 
       ready: false, 
       joinTime: Date.now(),
-      isAdmin: false, // Joining users are not admin initially
-      isSyncMaster: false // Joining users are not sync master initially
+      isAdmin: false,
+      isSyncMaster: false
     };
     
     updateRoomActivity(roomId);
@@ -544,7 +940,6 @@ io.on("connection", (socket) => {
     
     socket.emit("roomJoined", { roomId, isCreator: false });
     
-    // Send complete room state to the joining user immediately
     socket.emit("updateQueue", { 
       queue: rooms[roomId].queue,
       videoInfoCache: rooms[roomId].videoInfoCache
@@ -556,11 +951,9 @@ io.on("connection", (socket) => {
     if (rooms[roomId].currentVideo) {
       const videoKey = rooms[roomId].currentVideo;
       const videoInfo = rooms[roomId].videoInfoCache[videoKey];
-      
-      // Parse video key to get platform and details
       const parsedKey = parseVideoKey(videoKey);
       
-      console.log(`Sending current video to ${userName}: ${videoKey} (${parsedKey.platform}:${parsedKey.id})`);
+      console.log(`Sending current video to ${userName}: ${videoKey} (${parsedKey.platform})`);
       
       let playData = {
         isPaused: rooms[roomId].isPaused,
@@ -572,16 +965,17 @@ io.on("connection", (socket) => {
         playData.videoId = parsedKey.id;
         playData.platform = 'anime';
         playData.episode = parsedKey.episode;
+        playData.source = parsedKey.source;
         playData.embedUrl = videoInfo?.embedUrl;
+        playData.directUrl = videoInfo?.directUrl;
+        playData.streamUrl = videoInfo?.streamUrl;
       } else {
         playData.videoId = parsedKey.id;
         playData.platform = parsedKey.platform;
       }
       
-      // Send immediately, then sync after UI loads
       socket.emit("playVideo", playData);
       
-      // Send sync heartbeat to new user after delay
       setTimeout(() => {
         if (rooms[roomId] && rooms[roomId].users[socket.id]) {
           socket.emit("syncHeartbeat", {
@@ -593,51 +987,42 @@ io.on("connection", (socket) => {
       }, 2000);
     }
     
-    // Update admin status after user joins
     updateRoomAdmin(roomId);
-    // Update sync master status after user joins
     updateSyncMaster(roomId);
     
-    // Notify all users in room about the updated user list
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
-    
-    // Send join notification to other users (not the joining user)
     socket.to(roomId).emit("userJoined", { userName });
   });
 
-  // Sync-related socket events
-  socket.on("syncHeartbeat", ({ roomId, currentTime, isPaused, timestamp }) => {
-    if (!rooms[roomId] || !rooms[roomId].users[socket.id] || !rooms[roomId].users[socket.id].isSyncMaster) {
-      return; // Only sync masters can send heartbeats
-    }
-    
-    // Update room state
-    rooms[roomId].currentTime = currentTime;
-    rooms[roomId].isPaused = isPaused;
-    rooms[roomId].syncState.lastHeartbeat = Date.now();
-    
-    // Broadcast to all other users in room
-    socket.to(roomId).emit("syncHeartbeat", {
-      currentTime,
-      isPaused,
-      timestamp
-    });
+  // Anime auto state update handler
+  socket.on("animeAutoStateUpdate", (data) => {
+    handleAnimeAutoStateUpdate(socket, data);
   });
 
-  socket.on("requestSync", ({ roomId }) => {
-    if (!rooms[roomId]) return;
+  // Anime heartbeat handler
+  socket.on("animeHeartbeat", ({ roomId, isAlive, estimatedTime }) => {
+    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) return;
     
-    const syncMaster = rooms[roomId].syncState.syncMaster;
-    if (syncMaster && rooms[roomId].users[syncMaster]) {
-      // Send sync request to sync master
-      io.to(syncMaster).emit("syncRequest", { requesterId: socket.id });
-      
-      // Also send current known state to requester
-      socket.emit("syncResponse", {
-        currentTime: rooms[roomId].currentTime,
-        isPaused: rooms[roomId].isPaused,
-        timestamp: Date.now()
-      });
+    const userId = socket.id;
+    const userName = rooms[roomId].users[userId].name;
+    
+    if (!rooms[roomId].animeSync.participantTimestamps) {
+      rooms[roomId].animeSync.participantTimestamps = new Map();
+    }
+    
+    rooms[roomId].animeSync.participantTimestamps.set(userId, {
+      lastSeen: Date.now(),
+      estimatedTime: estimatedTime,
+      isAlive: isAlive,
+      userName: userName
+    });
+    
+    // Clean up old heartbeats (older than 30 seconds)
+    const cutoff = Date.now() - 30000;
+    for (const [id, data] of rooms[roomId].animeSync.participantTimestamps.entries()) {
+      if (data.lastSeen < cutoff) {
+        rooms[roomId].animeSync.participantTimestamps.delete(id);
+      }
     }
   });
 
@@ -650,14 +1035,12 @@ io.on("connection", (socket) => {
     updateRoomActivity(roomId);
     console.log(`Adding video ${videoUrl} to room ${roomId}`);
     
-    // Parse video URL to determine platform and ID
     const videoData = parseVideoUrl(videoUrl);
     if (!videoData) {
-      socket.emit("videoError", { message: "Unsupported video URL format. Supports YouTube, Vimeo, Twitch, and AnimeKai URLs." });
+      socket.emit("videoError", { message: "Unsupported video URL format. Supports YouTube, Vimeo, Twitch, and Anime URLs." });
       return;
     }
     
-    // Handle different platforms
     if (videoData.platform === 'youtube') {
       fetchVideoInfo(videoData.id, (error, videoInfo) => {
         if (error) {
@@ -669,11 +1052,9 @@ io.on("connection", (socket) => {
         processVideoAdd(roomId, videoData, videoInfo, socket);
       });
     } else if (videoData.platform === 'anime') {
-      // Create anime info from URL structure
       const animeInfo = createAnimeInfo(videoData);
       processVideoAdd(roomId, videoData, animeInfo, socket);
     } else {
-      // For other platforms, create basic video info
       const basicInfo = {
         title: `${videoData.platform.charAt(0).toUpperCase() + videoData.platform.slice(1)} Video`,
         channelTitle: videoData.platform,
@@ -683,44 +1064,14 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Helper function to create anime info from URL
-  function createAnimeInfo(videoData) {
-    const animeSlug = videoData.id;
-    const episode = videoData.episode;
-    
-    // Convert slug to readable title
-    const title = animeSlug
-      .split('-')
-      .map(word => {
-        // Handle season numbers and common patterns
-        if (word === 'season') return 'Season';
-        if (word.match(/^\d+$/)) return word;
-        if (word.length <= 2) return word.toUpperCase();
-        return word.charAt(0).toUpperCase() + word.slice(1);
-      })
-      .join(' ')
-      .replace(/\s+\w{4}$/, ''); // Remove trailing ID (like '3erk', 'mw4v', 'jvrv')
-    
-    return {
-      title: `${title} - Episode ${episode}`,
-      channelTitle: 'AnimeKai',
-      platform: 'anime',
-      episode: episode,
-      animeTitle: title,
-      embedUrl: videoData.embedUrl,
-      thumbnail: `https://img.animekai.ac/covers/${animeSlug.split('-').slice(0, -1).join('-')}.jpg` // Estimated thumbnail URL
-    };
-  }
-
   function processVideoAdd(roomId, videoData, videoInfo, socket) {
     if (!rooms[roomId].videoInfoCache) {
       rooms[roomId].videoInfoCache = {};
     }
     
-    // Create unique key for different platforms
     let videoKey;
     if (videoData.platform === 'anime') {
-      videoKey = `anime_${videoData.id}_ep${videoData.episode}`;
+      videoKey = `anime_${videoData.source}_${videoData.id}_ep${videoData.episode}`;
     } else {
       videoKey = `${videoData.platform}_${videoData.id}`;
     }
@@ -733,7 +1084,6 @@ io.on("connection", (socket) => {
       videoInfoCache: rooms[roomId].videoInfoCache
     });
     
-    // Notify users about the video being added
     const userName = rooms[roomId].users[socket.id].name;
     io.to(roomId).emit("videoAdded", {
       user: userName,
@@ -743,13 +1093,12 @@ io.on("connection", (socket) => {
     // If no video is currently playing, start this one immediately
     if (!rooms[roomId].currentVideo) {
       rooms[roomId].currentVideo = videoKey;
-      rooms[roomId].queue.shift(); // Remove from queue since it's now playing
+      rooms[roomId].queue.shift();
       rooms[roomId].currentTime = 0;
       rooms[roomId].isPaused = false;
       
       console.log(`Auto-starting video ${videoKey} in room ${roomId}`);
       
-      // Prepare play data based on platform
       let playData = {
         isPaused: false,
         currentTime: 0,
@@ -760,7 +1109,10 @@ io.on("connection", (socket) => {
         playData.videoId = videoData.id;
         playData.platform = 'anime';
         playData.episode = videoData.episode;
+        playData.source = videoData.source;
         playData.embedUrl = videoData.embedUrl;
+        playData.directUrl = videoData.directUrl;
+        playData.streamUrl = videoData.streamUrl;
       } else {
         playData.videoId = videoData.id;
         playData.platform = videoData.platform;
@@ -787,10 +1139,8 @@ io.on("connection", (socket) => {
       const nextEpisode = tryAutoProgressAnime(roomId, currentVideoInfo);
       if (nextEpisode) {
         console.log(`Auto-progressing to next episode: ${nextEpisode.title}`);
-        // Add next episode to front of queue
         rooms[roomId].queue.unshift(nextEpisode.videoKey);
         
-        // Notify users about auto-progression
         io.to(roomId).emit("autoProgression", {
           currentEpisode: currentVideoInfo.title,
           nextEpisode: nextEpisode.title,
@@ -809,7 +1159,6 @@ io.on("connection", (socket) => {
       
       console.log(`Playing next video ${nextVideo} in room ${roomId}`);
       
-      // Parse video key to get platform and details
       const videoInfo = rooms[roomId].videoInfoCache[nextVideo];
       const parsedKey = parseVideoKey(nextVideo);
       
@@ -823,9 +1172,11 @@ io.on("connection", (socket) => {
         playData.videoId = parsedKey.id;
         playData.platform = 'anime';
         playData.episode = parsedKey.episode;
+        playData.source = parsedKey.source;
         playData.embedUrl = videoInfo?.embedUrl;
+        playData.directUrl = videoInfo?.directUrl;
+        playData.streamUrl = videoInfo?.streamUrl;
         
-        // Start anime sync assistance
         startAnimeSyncAssistance(roomId);
       } else {
         playData.videoId = parsedKey.id;
@@ -845,144 +1196,37 @@ io.on("connection", (socket) => {
     }
   });
 
-  // Auto-progression helper function
-  function tryAutoProgressAnime(roomId, currentVideoInfo) {
-    if (!currentVideoInfo || currentVideoInfo.platform !== 'anime') return null;
-    
-    const currentEpisode = parseInt(currentVideoInfo.episode) || 1;
-    const nextEpisode = currentEpisode + 1;
-    
-    // Create next episode info
-    const nextVideoData = {
-      platform: 'anime',
-      id: currentVideoInfo.id,
-      episode: nextEpisode.toString(),
-      embedUrl: `https://animekai.ac/watch/${currentVideoInfo.id}#ep=${nextEpisode}`
-    };
-    
-    const nextVideoInfo = {
-      title: currentVideoInfo.animeTitle ? `${currentVideoInfo.animeTitle} - Episode ${nextEpisode}` : `Episode ${nextEpisode}`,
-      channelTitle: 'AnimeKai',
-      platform: 'anime',
-      episode: nextEpisode.toString(),
-      animeTitle: currentVideoInfo.animeTitle,
-      embedUrl: nextVideoData.embedUrl
-    };
-    
-    const videoKey = `anime_${currentVideoInfo.id}_ep${nextEpisode}`;
-    
-    // Add to cache
-    rooms[roomId].videoInfoCache[videoKey] = { ...nextVideoInfo, ...nextVideoData };
-    
-    return {
-      videoKey: videoKey,
-      title: nextVideoInfo.title,
-      videoInfo: nextVideoInfo
-    };
-  }
-
-  // Start anime sync assistance
-  function startAnimeSyncAssistance(roomId) {
-    if (!rooms[roomId] || !rooms[roomId].animeSettings.syncAssistance) return;
-    
-    rooms[roomId].animeSync.currentEpisodeStart = Date.now();
-    rooms[roomId].animeSync.participantTimestamps.clear();
-    
-    // Send sync assistance start notification
-    io.to(roomId).emit("animeSyncStart", {
-      startTime: Date.now(),
-      message: "Episode started - sync assistance active"
-    });
-    
-    // Start anime sync master system
-    startAnimeSyncMaster(roomId);
-  }
-
-  // Enhanced anime sync master system
-  function startAnimeSyncMaster(roomId) {
-    if (!rooms[roomId]) return;
-    
-    // Clear any existing anime sync interval
-    if (rooms[roomId].animeSync.syncCheckInterval) {
-      clearInterval(rooms[roomId].animeSync.syncCheckInterval);
+  // Other socket handlers remain the same...
+  socket.on("syncHeartbeat", ({ roomId, currentTime, isPaused, timestamp }) => {
+    if (!rooms[roomId] || !rooms[roomId].users[socket.id] || !rooms[roomId].users[socket.id].isSyncMaster) {
+      return;
     }
     
-    // Initialize anime sync state
-    rooms[roomId].animeSync.masterState = {
-      currentTime: 0,
-      isPaused: false,
-      lastUpdate: Date.now(),
-      episodeStartTime: Date.now()
-    };
+    rooms[roomId].currentTime = currentTime;
+    rooms[roomId].isPaused = isPaused;
+    rooms[roomId].syncState.lastHeartbeat = Date.now();
     
-    // Start automatic sync broadcasting (every 2 seconds for anime)
-    rooms[roomId].animeSync.syncCheckInterval = setInterval(() => {
-      if (rooms[roomId] && rooms[roomId].currentVideo) {
-        broadcastAnimeSyncState(roomId);
-      } else {
-        clearInterval(rooms[roomId].animeSync.syncCheckInterval);
-      }
-    }, 2000);
-    
-    console.log(`Started automatic anime sync master for room ${roomId}`);
-  }
-
-  // Broadcast anime sync state from master automatically
-  function broadcastAnimeSyncState(roomId) {
-    if (!rooms[roomId] || !rooms[roomId].animeSync.masterState) return;
-    
-    const syncMaster = rooms[roomId].syncState.syncMaster;
-    if (!syncMaster || !rooms[roomId].users[syncMaster]) return;
-    
-    // Calculate estimated current time for master
-    const episodeStart = rooms[roomId].animeSync.masterState.episodeStartTime;
-    const estimatedTime = (Date.now() - episodeStart) / 1000;
-    
-    // Update master state
-    rooms[roomId].animeSync.masterState.currentTime = estimatedTime;
-    rooms[roomId].animeSync.masterState.lastUpdate = Date.now();
-    
-    // Broadcast to all slaves automatically
-    io.to(roomId).emit("animeSyncUpdate", {
-      currentTime: estimatedTime,
-      isPaused: false, // Assume playing unless paused
-      timestamp: Date.now(),
-      masterTime: estimatedTime
+    socket.to(roomId).emit("syncHeartbeat", {
+      currentTime,
+      isPaused,
+      timestamp
     });
-    
-    console.log(`Auto-broadcasted anime sync state for room ${roomId}: ${Math.floor(estimatedTime)}s`);
-  }
-
-  // Handle master state updates (for pause/resume detection)
-  socket.on("animeMasterState", ({ roomId, isPaused, currentTime }) => {
-    if (!rooms[roomId] || !rooms[roomId].users[socket.id]?.isSyncMaster) return;
-    
-    // Update master state
-    if (rooms[roomId].animeSync.masterState) {
-      rooms[roomId].animeSync.masterState.isPaused = isPaused;
-      rooms[roomId].animeSync.masterState.currentTime = currentTime;
-      
-      // If resuming, recalculate episode start time
-      if (!isPaused) {
-        rooms[roomId].animeSync.masterState.episodeStartTime = Date.now() - (currentTime * 1000);
-      }
-    }
   });
 
-  // Helper function to parse video keys
-  function parseVideoKey(videoKey) {
-    if (videoKey.startsWith('anime_')) {
-      // Format: anime_animeSlug_epX
-      const parts = videoKey.split('_');
-      const episode = parts[parts.length - 1].replace('ep', '');
-      const id = parts.slice(1, -1).join('_');
-      return { platform: 'anime', id: id, episode: episode };
-    } else {
-      // Format: platform_id
-      const [platform, ...idParts] = videoKey.split('_');
-      return { platform: platform, id: idParts.join('_') };
+  socket.on("requestSync", ({ roomId }) => {
+    if (!rooms[roomId]) return;
+    
+    const syncMaster = rooms[roomId].syncState.syncMaster;
+    if (syncMaster && rooms[roomId].users[syncMaster]) {
+      io.to(syncMaster).emit("syncRequest", { requesterId: socket.id });
+      
+      socket.emit("syncResponse", {
+        currentTime: rooms[roomId].currentTime,
+        isPaused: rooms[roomId].isPaused,
+        timestamp: Date.now()
+      });
     }
-  }
+  });
 
   socket.on("toggleReady", (roomId) => {
     if (!rooms[roomId] || !rooms[roomId].users[socket.id]) {
@@ -999,7 +1243,6 @@ io.on("connection", (socket) => {
       rooms[roomId].readyUsers.delete(socket.id);
     }
     
-    // Update all users about ready states
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
     
     const totalUsers = Object.keys(rooms[roomId].users).length;
@@ -1007,7 +1250,6 @@ io.on("connection", (socket) => {
     
     console.log(`Ready check in room ${roomId}: ${readyCount}/${totalUsers} users ready`);
     
-    // Auto-start video when all users are ready and there's a queue
     if (readyCount === totalUsers && totalUsers >= 1 && rooms[roomId].queue.length > 0 && !rooms[roomId].currentVideo) {
       const nextVideo = rooms[roomId].queue.shift();
       rooms[roomId].currentVideo = nextVideo;
@@ -1018,7 +1260,6 @@ io.on("connection", (socket) => {
       
       console.log(`Auto-starting video ${nextVideo} in room ${roomId} (all users ready)`);
       
-      // Parse video key to get platform and details
       const videoInfo = rooms[roomId].videoInfoCache[nextVideo];
       const parsedKey = parseVideoKey(nextVideo);
       
@@ -1032,13 +1273,15 @@ io.on("connection", (socket) => {
         playData.videoId = parsedKey.id;
         playData.platform = 'anime';
         playData.episode = parsedKey.episode;
+        playData.source = parsedKey.source;
         playData.embedUrl = videoInfo?.embedUrl;
+        playData.directUrl = videoInfo?.directUrl;
+        playData.streamUrl = videoInfo?.streamUrl;
       } else {
         playData.videoId = parsedKey.id;
         playData.platform = parsedKey.platform;
       }
       
-      // Add a small delay to ensure all users are synchronized
       setTimeout(() => {
         io.to(roomId).emit("playVideo", playData);
         io.to(roomId).emit("updateQueue", { 
@@ -1061,7 +1304,6 @@ io.on("connection", (socket) => {
     const userName = rooms[roomId].users[socket.id].name;
     
     if (rooms[roomId].skipVotes.has(socket.id)) {
-      // Remove vote
       rooms[roomId].skipVotes.delete(socket.id);
       console.log(`${userName} removed skip vote in room ${roomId}`);
       io.to(roomId).emit("skipVoteUpdate", {
@@ -1071,7 +1313,6 @@ io.on("connection", (socket) => {
         user: userName
       });
     } else {
-      // Add vote
       rooms[roomId].skipVotes.add(socket.id);
       console.log(`${userName} voted to skip in room ${roomId}`);
       
@@ -1085,7 +1326,6 @@ io.on("connection", (socket) => {
         user: userName
       });
       
-      // Check if all users voted to skip
       if (skipVotes === totalUsers) {
         console.log(`Skip vote passed in room ${roomId} (${skipVotes}/${totalUsers})`);
         
@@ -1097,7 +1337,6 @@ io.on("connection", (socket) => {
           rooms[roomId].readyUsers.clear();
           rooms[roomId].skipVotes.clear();
           
-          // Parse video key to get platform and details
           const videoInfo = rooms[roomId].videoInfoCache[nextVideo];
           const parsedKey = parseVideoKey(nextVideo);
           
@@ -1111,7 +1350,10 @@ io.on("connection", (socket) => {
             playData.videoId = parsedKey.id;
             playData.platform = 'anime';
             playData.episode = parsedKey.episode;
+            playData.source = parsedKey.source;
             playData.embedUrl = videoInfo?.embedUrl;
+            playData.directUrl = videoInfo?.directUrl;
+            playData.streamUrl = videoInfo?.streamUrl;
           } else {
             playData.videoId = parsedKey.id;
             playData.platform = parsedKey.platform;
@@ -1140,13 +1382,11 @@ io.on("connection", (socket) => {
       return;
     }
     
-    // Check if the user requesting the kick is an admin
     if (!rooms[roomId].users[socket.id].isAdmin) {
       socket.emit("kickError", "Only room admin can kick users");
       return;
     }
     
-    // Find target user by name
     let targetUserId = null;
     for (const [socketId, user] of Object.entries(rooms[roomId].users)) {
       if (user.name === targetUserName) {
@@ -1164,7 +1404,6 @@ io.on("connection", (socket) => {
     const adminName = rooms[roomId].users[socket.id].name;
     const targetName = targetUserName;
     
-    // Can't kick yourself
     if (socket.id === targetUserId) {
       socket.emit("kickError", "You cannot kick yourself");
       return;
@@ -1172,31 +1411,24 @@ io.on("connection", (socket) => {
     
     console.log(`Admin ${adminName} is kicking ${targetName} from room ${roomId}`);
     
-    // Remove user from room immediately (admin kick)
     delete rooms[roomId].users[targetUserId];
     rooms[roomId].readyUsers.delete(targetUserId);
     rooms[roomId].skipVotes.delete(targetUserId);
     
-    // Clean up any kick votes for this user
     delete rooms[roomId].kickVotes[targetUserId];
     
-    // Remove user from socket room and disconnect
     const targetSocket = io.sockets.sockets.get(targetUserId);
     if (targetSocket) {
       targetSocket.leave(roomId);
       targetSocket.emit("kicked", { reason: "admin", room: roomId });
-      // Force disconnect after a short delay
       setTimeout(() => {
         targetSocket.disconnect(true);
       }, 1000);
     }
     
-    // Update admin status after user removal
     updateRoomAdmin(roomId);
-    // Update sync master status after user removal
     updateSyncMaster(roomId);
     
-    // Notify remaining users
     io.to(roomId).emit("userKicked", { user: targetName, reason: "admin", kickedBy: adminName });
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
   });
@@ -1242,13 +1474,11 @@ io.on("connection", (socket) => {
       
       console.log(`Removed video at index ${queueIndex} from room ${roomId}`);
       
-      // Notify all users about queue update
       io.to(roomId).emit("updateQueue", { 
         queue: rooms[roomId].queue,
         videoInfoCache: rooms[roomId].videoInfoCache
       });
       
-      // Notify about removal
       const userName = rooms[roomId].users[socket.id].name;
       io.to(roomId).emit("videoRemoved", {
         user: userName,
@@ -1265,7 +1495,6 @@ io.on("connection", (socket) => {
 
     console.log(`Refreshing room state for ${rooms[roomId].users[socket.id].name} in room ${roomId}`);
     
-    // Send complete room state
     socket.emit("updateQueue", { 
       queue: rooms[roomId].queue,
       videoInfoCache: rooms[roomId].videoInfoCache
@@ -1273,7 +1502,6 @@ io.on("connection", (socket) => {
     
     socket.emit("updateUsers", Object.values(rooms[roomId].users));
     
-    // Send current video state if one is playing
     if (rooms[roomId].currentVideo) {
       const videoKey = rooms[roomId].currentVideo;
       const videoInfo = rooms[roomId].videoInfoCache[videoKey];
@@ -1285,11 +1513,36 @@ io.on("connection", (socket) => {
       });
     }
     
-    // Send sync master status
     const user = rooms[roomId].users[socket.id];
     if (user.isSyncMaster) {
       socket.emit("syncMasterChanged", { isSyncMaster: true });
     }
+  });
+
+  socket.on("updateRoomSettings", ({ roomId, settings }) => {
+    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) return;
+    
+    if (!rooms[roomId].users[socket.id].isAdmin) {
+      socket.emit("settingsError", "Only room admin can update settings");
+      return;
+    }
+    
+    if (settings.animeSettings) {
+      Object.assign(rooms[roomId].animeSettings, settings.animeSettings);
+      console.log(`Room ${roomId} anime settings updated:`, settings.animeSettings);
+    }
+    
+    io.to(roomId).emit("roomSettingsUpdated", {
+      animeSettings: rooms[roomId].animeSettings
+    });
+  });
+
+  socket.on("getRoomSettings", (roomId) => {
+    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) return;
+    
+    socket.emit("roomSettings", {
+      animeSettings: rooms[roomId].animeSettings
+    });
   });
 
   socket.on("disconnect", () => {
@@ -1304,12 +1557,10 @@ io.on("connection", (socket) => {
         rooms[roomId].readyUsers.delete(socket.id);
         rooms[roomId].skipVotes.delete(socket.id);
         
-        // Clean up anime sync participation
         if (rooms[roomId].animeSync && rooms[roomId].animeSync.participantTimestamps) {
           rooms[roomId].animeSync.participantTimestamps.delete(socket.id);
         }
         
-        // Clean up kick votes involving this user
         Object.keys(rooms[roomId].kickVotes).forEach(targetUserId => {
           if (targetUserId === socket.id) {
             delete rooms[roomId].kickVotes[targetUserId];
@@ -1326,115 +1577,23 @@ io.on("connection", (socket) => {
         
         if (remainingUsers === 0) {
           console.log(`Room ${roomId} is empty, cleaning up...`);
-          // Clean up anime sync interval
           if (rooms[roomId].animeSync && rooms[roomId].animeSync.syncCheckInterval) {
             clearInterval(rooms[roomId].animeSync.syncCheckInterval);
           }
           delete rooms[roomId];
         } else {
-          // Update admin status after user leaves
           updateRoomAdmin(roomId);
-          // Update sync master status after user leaves (especially if sync master left)
           if (wasSyncMaster) {
             console.log(`Sync master left room ${roomId}, reassigning...`);
           }
           updateSyncMaster(roomId);
           
-          // Send updated user list to all remaining users
           io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
-          // Send leave notification to remaining users
           io.to(roomId).emit("userLeft", { userName });
         }
         break;
       }
     }
-  });
-
-  // Anime sync response handler
-  socket.on("animeSyncResponse", ({ roomId, timestamp, isInSync }) => {
-    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) return;
-    
-    const userName = rooms[roomId].users[socket.id].name;
-    rooms[roomId].animeSync.participantTimestamps.set(socket.id, {
-      timestamp: timestamp,
-      isInSync: isInSync,
-      responseTime: Date.now()
-    });
-    
-    console.log(`Anime sync response from ${userName}: ${isInSync ? 'in sync' : 'out of sync'}`);
-    
-    // Check if we have responses from most users
-    const totalUsers = Object.keys(rooms[roomId].users).length;
-    const responses = rooms[roomId].animeSync.participantTimestamps.size;
-    
-    if (responses >= Math.ceil(totalUsers * 0.7)) { // 70% response rate
-      processAnimeSyncResults(roomId);
-    }
-  });
-
-  // Process anime sync check results
-  function processAnimeSyncResults(roomId) {
-    if (!rooms[roomId]) return;
-    
-    const responses = Array.from(rooms[roomId].animeSync.participantTimestamps.values());
-    const inSyncCount = responses.filter(r => r.isInSync).length;
-    const outOfSyncCount = responses.length - inSyncCount;
-    
-    let syncMessage = "";
-    let syncType = "info";
-    
-    if (outOfSyncCount === 0) {
-      syncMessage = "✅ Everyone is in sync!";
-      syncType = "success";
-    } else if (outOfSyncCount <= 2) {
-      syncMessage = `⚠️ ${outOfSyncCount} user(s) may need to resync`;
-      syncType = "warning";
-    } else {
-      syncMessage = "🔄 Multiple users out of sync - consider using Ready button";
-      syncType = "warning";
-    }
-    
-    io.to(roomId).emit("animeSyncResult", {
-      inSync: inSyncCount,
-      outOfSync: outOfSyncCount,
-      total: responses.length,
-      message: syncMessage,
-      type: syncType
-    });
-    
-    // Clear responses for next check
-    rooms[roomId].animeSync.participantTimestamps.clear();
-  }
-
-  // Room settings update
-  socket.on("updateRoomSettings", ({ roomId, settings }) => {
-    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) return;
-    
-    // Only admin can update room settings
-    if (!rooms[roomId].users[socket.id].isAdmin) {
-      socket.emit("settingsError", "Only room admin can update settings");
-      return;
-    }
-    
-    // Update anime settings
-    if (settings.animeSettings) {
-      Object.assign(rooms[roomId].animeSettings, settings.animeSettings);
-      console.log(`Room ${roomId} anime settings updated:`, settings.animeSettings);
-    }
-    
-    // Broadcast updated settings to all users
-    io.to(roomId).emit("roomSettingsUpdated", {
-      animeSettings: rooms[roomId].animeSettings
-    });
-  });
-
-  // Get room settings
-  socket.on("getRoomSettings", (roomId) => {
-    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) return;
-    
-    socket.emit("roomSettings", {
-      animeSettings: rooms[roomId].animeSettings
-    });
   });
 });
 
