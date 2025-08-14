@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Watch Together</title>
+  <title>WatchTogether</title>
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
   <style>
@@ -12,7 +12,7 @@
   </style>
 </head>
 <body>
-  <h1>Watch Together</h1>
+  <h1>WatchTogether</h1>
   <div>
     Name: <input type="text" id="nameInput"><br><br>
     Room ID: <input type="text" id="roomInput">
@@ -50,7 +50,7 @@
       currentRoom = room;
       document.getElementById("app").style.display = "block";
 
-      socket = io("https://awwniegithubio-production.up.railway.app/"); // Replace with Railway URL
+      socket = io("https://YOUR_BACKEND_URL"); // Replace with Railway URL
       socket.emit("joinRoom", room, name);
 
       socket.on("updateQueue", (queue) => {
