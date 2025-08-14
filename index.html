@@ -1,89 +1,89 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <title>Watch Together</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="https://www.youtube.com/iframe_api"></script>
   <style>
-    body { font-family: sans-serif; background: #111; color: #fff; }
-    #queue { max-width: 400px; margin: 10px; }
-    #queue div { margin: 5px 0; cursor: pointer; }
+    body { font-family: sans-serif; padding: 20px; }
+    #queue { margin-top: 10px; }
+    #videoContainer { margin-top: 20px; }
   </style>
 </head>
 <body>
   <h1>Watch Together</h1>
-  <input id="name" placeholder="Your name" />
-  <input id="room" placeholder="Room ID" />
-  <button id="join">Join Room</button>
-  <br/><br/>
-  <input id="video" placeholder="YouTube video ID" />
-  <input id="title" placeholder="Video title" />
-  <button id="add">Add to Queue</button>
+  <div>
+    Name: <input type="text" id="nameInput"><br><br>
+    Room ID: <input type="text" id="roomInput">
+    <button id="joinBtn">Join Room</button>
+  </div>
 
-  <h3>Queue</h3>
-  <div id="queue"></div>
+  <div id="app" style="display:none;">
+    <input type="text" id="videoInput" placeholder="YouTube Video ID">
+    <button id="addVideoBtn">Add Video</button>
 
-  <div id="player"></div>
+    <h3>Queue:</h3>
+    <ul id="queue"></ul>
 
-  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
-  <script src="https://www.youtube.com/iframe_api"></script>
+    <div id="videoContainer"></div>
+  </div>
+
   <script>
-    let socket, player;
-    let currentVideo = null;
+    let socket;
+    let player;
+    let currentRoom = "";
 
-    const queueDiv = document.getElementById("queue");
-
-    document.getElementById("join").onclick = () => {
-      const name = document.getElementById("name").value;
-      const room = document.getElementById("room").value;
+    document.getElementById("joinBtn").onclick = () => {
+      const name = document.getElementById("nameInput").value;
+      const room = document.getElementById("roomInput").value;
       if (!name || !room) return alert("Enter name and room ID");
 
-      socket = io("awwniegithubio-production.up.railway.app"); // <-- replace with backend URL
-      socket.emit("joinRoom", { roomId: room, name });
+      currentRoom = room;
+      document.getElementById("app").style.display = "block";
 
-      socket.on("queueUpdated", renderQueue);
-      socket.on("currentVideo", loadVideo);
-      socket.on("playVideo", () => player?.playVideo());
-      socket.on("pauseVideo", () => player?.pauseVideo());
+      // Connect socket
+      socket = io("https://awwniegithubio-production.up.railway.app/"); // <-- Replace with Railway URL
+      socket.emit("joinRoom", room, name);
+
+      socket.on("updateQueue", (queue) => {
+        const ul = document.getElementById("queue");
+        ul.innerHTML = "";
+        queue.forEach(v => {
+          const li = document.createElement("li");
+          li.textContent = v;
+          ul.appendChild(li);
+        });
+      });
+
+      socket.on("playVideo", (videoId) => {
+        if (player) player.loadVideoById(videoId);
+        else createPlayer(videoId);
+      });
     };
 
-    document.getElementById("add").onclick = () => {
-      const videoId = document.getElementById("video").value;
-      const title = document.getElementById("title").value;
+    document.getElementById("addVideoBtn").onclick = () => {
+      const videoId = document.getElementById("videoInput").value.trim();
       if (!videoId) return;
-      socket.emit("addToQueue", { videoId, title });
+      socket.emit("addVideo", { roomId: currentRoom, videoId });
+      document.getElementById("videoInput").value = "";
     };
 
-    function renderQueue(queue) {
-      queueDiv.innerHTML = "";
-      queue.forEach((v, i) => {
-        const div = document.createElement("div");
-        div.textContent = v.title || v.videoId;
-        div.onclick = () => socket.emit("nextFromQueue");
-        queueDiv.appendChild(div);
+    function createPlayer(videoId) {
+      player = new YT.Player('videoContainer', {
+        height: '390',
+        width: '640',
+        videoId: videoId,
+        events: {
+          'onStateChange': onPlayerStateChange
+        }
       });
     }
 
-    function loadVideo(video) {
-      currentVideo = video;
-      if (!video) return;
-      if (!player) {
-        window.onYouTubeIframeAPIReady = () => {
-          player = new YT.Player("player", {
-            height: "390", width: "640",
-            videoId: video.videoId,
-            events: {
-              'onStateChange': onPlayerStateChange
-            }
-          });
-        };
-      } else {
-        player.loadVideoById(video.videoId);
-      }
-    }
-
     function onPlayerStateChange(event) {
+      // When video ends
       if (event.data === YT.PlayerState.ENDED) {
-        socket.emit("nextFromQueue");
+        socket.emit("videoEnded", currentRoom);
       }
     }
   </script>
