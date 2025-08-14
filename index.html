@@ -7,9 +7,75 @@
   <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
   <script src="https://www.youtube.com/iframe_api"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; background-color:black; color:DarkSlateBlue;}
+    body { 
+      font-family: sans-serif; 
+      padding: 20px; 
+      background-color: black; 
+      color: DarkSlateBlue;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
     #queue { margin-top: 10px; }
     #videoContainer { margin-top: 20px; }
+    #users { 
+      margin-top: 20px; 
+      padding: 15px;
+      background-color: #1a1a1a;
+      border-radius: 5px;
+    }
+    .user { 
+      display: inline-block; 
+      margin: 5px; 
+      padding: 8px 12px;
+      background-color: #333;
+      border-radius: 15px;
+      font-size: 14px;
+    }
+    .user.ready { background-color: #4a7c59; }
+    .controls {
+      margin: 15px 0;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 8px 15px;
+      background-color: #4a4a8a;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover { background-color: #5a5a9a; }
+    button:disabled { 
+      background-color: #333; 
+      cursor: not-allowed; 
+    }
+    input[type="text"] {
+      padding: 8px;
+      border: 1px solid #555;
+      background-color: #222;
+      color: white;
+      border-radius: 3px;
+    }
+    .ready-status {
+      margin-top: 10px;
+      padding: 10px;
+      background-color: #2a2a2a;
+      border-radius: 5px;
+      text-align: center;
+    }
+    .notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: #4a7c59;
+      color: white;
+      padding: 15px;
+      border-radius: 5px;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -21,8 +87,18 @@
   </div>
 
   <div id="app" style="display:none;">
-    <input type="text" id="videoInput" placeholder="YouTube video URL or ID">
-    <button id="addVideoBtn">Add Video</button>
+    <div class="controls">
+      <input type="text" id="videoInput" placeholder="YouTube video URL or ID">
+      <button id="addVideoBtn">Add Video</button>
+      <button id="skipBtn">Skip Video</button>
+      <button id="readyBtn">Ready</button>
+    </div>
+
+    <div id="users">
+      <h3>Users in Room:</h3>
+      <div id="userList"></div>
+      <div id="readyStatus" class="ready-status"></div>
+    </div>
 
     <h3>Queue:</h3>
     <ul id="queue"></ul>
@@ -30,10 +106,14 @@
     <div id="videoContainer"></div>
   </div>
 
+  <div id="notification" class="notification"></div>
+
   <script>
     let socket;
     let player;
     let currentRoom = "";
+    let isReady = false;
+    let syncingVideo = false;
 
     function extractVideoID(url) {
       const match = url.match(/[?&]v=([^&]+)/);
@@ -43,15 +123,24 @@
       return url;
     }
 
+    function showNotification(message) {
+      const notification = document.getElementById("notification");
+      notification.textContent = message;
+      notification.style.display = "block";
+      setTimeout(() => {
+        notification.style.display = "none";
+      }, 3000);
+    }
+
     document.getElementById("joinBtn").onclick = () => {
-      const name = document.getElementById("nameInput").value;
-      const room = document.getElementById("roomInput").value;
+      const name = document.getElementById("nameInput").value.trim();
+      const room = document.getElementById("roomInput").value.trim();
       if (!name || !room) return alert("Enter name and room ID");
 
       currentRoom = room;
       document.getElementById("app").style.display = "block";
 
-      socket = io("https://awwniegithubio-production-02b2.up.railway.app/"); // Replace with Railway URL
+      socket = io("https://awwniegithubio-production-02b2.up.railway.app/");
       socket.emit("joinRoom", room, name);
 
       socket.on("updateQueue", (queue) => {
@@ -64,9 +153,79 @@
         });
       });
 
-      socket.on("playVideo", (videoId) => {
-        if (player) player.loadVideoById(videoId);
-        else createPlayer(videoId);
+      socket.on("updateUsers", (users) => {
+        const userList = document.getElementById("userList");
+        userList.innerHTML = "";
+        
+        let readyCount = 0;
+        users.forEach(user => {
+          const userDiv = document.createElement("div");
+          userDiv.className = "user" + (user.ready ? " ready" : "");
+          userDiv.textContent = user.name + (user.ready ? " ✓" : "");
+          userList.appendChild(userDiv);
+          if (user.ready) readyCount++;
+        });
+
+        const readyStatus = document.getElementById("readyStatus");
+        readyStatus.textContent = `${readyCount}/${users.length} users ready`;
+      });
+
+      socket.on("playVideo", (data) => {
+        if (typeof data === 'string') {
+          // Legacy support
+          if (player) player.loadVideoById(data);
+          else createPlayer(data);
+        } else {
+          if (player) {
+            player.loadVideoById(data.videoId);
+            setTimeout(() => {
+              if (data.isPaused) {
+                player.pauseVideo();
+              }
+              if (data.currentTime > 0) {
+                player.seekTo(data.currentTime, true);
+              }
+            }, 1000);
+          } else {
+            createPlayer(data.videoId);
+          }
+        }
+      });
+
+      socket.on("videoStopped", () => {
+        if (player) {
+          player.stopVideo();
+        }
+      });
+
+      socket.on("syncPause", (currentTime) => {
+        if (player && !syncingVideo) {
+          syncingVideo = true;
+          player.seekTo(currentTime, true);
+          player.pauseVideo();
+          setTimeout(() => { syncingVideo = false; }, 500);
+        }
+      });
+
+      socket.on("syncPlay", (currentTime) => {
+        if (player && !syncingVideo) {
+          syncingVideo = true;
+          player.seekTo(currentTime, true);
+          player.playVideo();
+          setTimeout(() => { syncingVideo = false; }, 500);
+        }
+      });
+
+      socket.on("syncSeek", (currentTime) => {
+        if (player && !syncingVideo) {
+          syncingVideo = true;
+          player.seekTo(currentTime, true);
+          setTimeout(() => { syncingVideo = false; }, 500);
+        }
+      });
+
+      socket.on("allReady", () => {
+        showNotification("All users are ready! Starting video...");
       });
     };
 
@@ -78,20 +237,62 @@
       document.getElementById("videoInput").value = "";
     };
 
+    document.getElementById("skipBtn").onclick = () => {
+      if (currentRoom) {
+        socket.emit("skipVideo", currentRoom);
+      }
+    };
+
+    document.getElementById("readyBtn").onclick = () => {
+      isReady = !isReady;
+      socket.emit("toggleReady", currentRoom);
+      document.getElementById("readyBtn").textContent = isReady ? "Not Ready" : "Ready";
+      document.getElementById("readyBtn").style.backgroundColor = isReady ? "#7c4a4a" : "#4a4a8a";
+    };
+
     function createPlayer(videoId) {
       player = new YT.Player('videoContainer', {
         height: '390',
         width: '640',
         videoId: videoId,
-        events: { 'onStateChange': onPlayerStateChange }
+        events: { 
+          'onStateChange': onPlayerStateChange,
+          'onReady': onPlayerReady
+        }
       });
     }
 
+    function onPlayerReady(event) {
+      // Player is ready
+    }
+
     function onPlayerStateChange(event) {
+      if (syncingVideo) return;
+
       if (event.data === YT.PlayerState.ENDED) {
         socket.emit("videoEnded", currentRoom);
+      } else if (event.data === YT.PlayerState.PAUSED) {
+        const currentTime = player.getCurrentTime();
+        socket.emit("pauseVideo", { roomId: currentRoom, currentTime });
+      } else if (event.data === YT.PlayerState.PLAYING) {
+        const currentTime = player.getCurrentTime();
+        socket.emit("playVideo", { roomId: currentRoom, currentTime });
       }
     }
+
+    // Sync seeking
+    let lastSeekTime = 0;
+    setInterval(() => {
+      if (player && player.getCurrentTime && !syncingVideo) {
+        const currentTime = player.getCurrentTime();
+        if (Math.abs(currentTime - lastSeekTime) > 2) {
+          socket.emit("seekVideo", { roomId: currentRoom, currentTime });
+          lastSeekTime = currentTime;
+        } else {
+          lastSeekTime = currentTime;
+        }
+      }
+    }, 1000);
   </script>
 </body>
 </html>
