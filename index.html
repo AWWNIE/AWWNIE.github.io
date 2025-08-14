@@ -317,6 +317,43 @@
       display: none;
     }
 
+    .kick-vote-status {
+      text-align: center;
+      padding: 15px;
+      background: rgba(255, 165, 0, 0.1);
+      border: 1px solid rgba(255, 165, 0, 0.2);
+      border-radius: 12px;
+      margin-bottom: 15px;
+      display: none;
+    }
+
+    .user-actions {
+      display: flex;
+      gap: 5px;
+      margin-top: 5px;
+    }
+
+    .kick-btn {
+      padding: 4px 8px;
+      font-size: 10px;
+      background: rgba(255, 165, 0, 0.2);
+      border: 1px solid rgba(255, 165, 0, 0.3);
+      color: #ffa500;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .kick-btn:hover {
+      background: rgba(255, 165, 0, 0.3);
+      transform: none;
+      box-shadow: none;
+    }
+
+    .kick-btn.voted {
+      background: rgba(255, 165, 0, 0.4);
+      color: #fff;
+    }
+
     .queue-list {
       max-height: 400px;
       overflow-y: auto;
@@ -444,16 +481,105 @@
       background: rgba(255, 255, 255, 0.3);
     }
 
-    /* Responsive design */
+    /* Picture-in-picture styles */
+    .pip-container {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      width: 300px;
+      height: 169px;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      display: none;
+      cursor: move;
+    }
+
+    .pip-controls {
+      position: absolute;
+      top: 5px;
+      right: 5px;
+      display: flex;
+      gap: 5px;
+      z-index: 1001;
+    }
+
+    .pip-btn {
+      background: rgba(0, 0, 0, 0.7);
+      border: none;
+      color: white;
+      padding: 5px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .search-container {
+      margin-bottom: 15px;
+    }
+
+    .search-results {
+      max-height: 300px;
+      overflow-y: auto;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      margin-top: 10px;
+      display: none;
+    }
+
+    .search-item {
+      display: flex;
+      gap: 15px;
+      padding: 10px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .search-item:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .search-thumbnail {
+      width: 120px;
+      height: 68px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    .search-info {
+      flex: 1;
+    }
+
+    .search-title {
+      font-weight: 500;
+      margin-bottom: 5px;
+      line-height: 1.3;
+    }
+
+    .search-channel {
+      color: #888;
+      font-size: 12px;
+    }
+
+    /* Enhanced mobile responsiveness */
     @media (max-width: 1024px) {
       .main-content {
         gap: 20px;
+      }
+      
+      .pip-container {
+        width: 250px;
+        height: 141px;
+        bottom: 80px;
       }
     }
 
     @media (max-width: 768px) {
       .container {
-        padding: 15px;
+        padding: 10px;
       }
       
       .header h1 {
@@ -462,6 +588,7 @@
       
       .controls {
         flex-direction: column;
+        gap: 10px;
       }
       
       .input-group {
@@ -469,7 +596,61 @@
       }
       
       .queue-list {
-        max-height: 300px;
+        max-height: 250px;
+      }
+      
+      .pip-container {
+        width: 200px;
+        height: 113px;
+        bottom: 70px;
+        right: 10px;
+      }
+      
+      .search-item {
+        flex-direction: column;
+        gap: 10px;
+      }
+      
+      .search-thumbnail {
+        width: 100%;
+        height: auto;
+      }
+      
+      .user-actions {
+        flex-direction: column;
+        gap: 3px;
+      }
+      
+      .kick-btn {
+        font-size: 9px;
+        padding: 3px 6px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .header h1 {
+        font-size: 1.5rem;
+      }
+      
+      .login-section {
+        padding: 20px;
+        margin: 10px;
+      }
+      
+      .video-section, .queue-section, .users-section {
+        padding: 15px;
+      }
+      
+      .pip-container {
+        width: 150px;
+        height: 84px;
+        bottom: 60px;
+      }
+      
+      .notification {
+        font-size: 12px;
+        padding: 10px 15px;
+        max-width: 280px;
       }
     }
   </style>
@@ -482,11 +663,19 @@
     </div>
 
     <div id="loginSection" class="login-section">
-      <h2 style="margin-bottom: 20px; font-weight: 600;">Join a Room</h2>
+      <h2 id="loginTitle" style="margin-bottom: 20px; font-weight: 600;">Join a Room</h2>
       <div style="display: flex; flex-direction: column; gap: 15px;">
         <input type="text" id="nameInput" placeholder="Enter your name" style="text-align: center;">
         <input type="text" id="roomInput" placeholder="Enter room ID" style="text-align: center;">
-        <button id="joinBtn" style="margin-top: 10px;">Join Room</button>
+        <div id="passwordSection" style="display: none;">
+          <input type="password" id="passwordInput" placeholder="Enter room password" style="text-align: center;">
+        </div>
+        <div id="createPasswordSection" style="display: none;">
+          <input type="password" id="createPasswordInput" placeholder="Set room password (optional)" style="text-align: center;">
+          <small style="color: #888; font-size: 12px; margin-top: 5px;">Leave empty for no password</small>
+        </div>
+        <button id="joinBtn" style="margin-top: 10px;">Check Room</button>
+        <button id="createRoomBtn" style="display: none;">Create Room</button>
       </div>
     </div>
 
@@ -508,13 +697,23 @@
             </div>
           </div>
 
+          <div class="search-container">
+            <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+              <input type="text" id="searchInput" placeholder="Search YouTube videos..." style="flex: 1;">
+              <button id="searchBtn" class="secondary">Search</button>
+            </div>
+            <div id="searchResults" class="search-results"></div>
+          </div>
+
           <div class="controls">
             <div class="input-group">
-              <input type="text" id="videoInput" placeholder="Paste YouTube URL or video ID">
+              <input type="text" id="videoInput" placeholder="Paste YouTube/Vimeo/Twitch URL">
             </div>
             <button id="addVideoBtn">Add Video</button>
             <button id="skipBtn" class="secondary">Vote Skip</button>
             <button id="readyBtn" class="ready">Ready</button>
+            <button id="pipBtn" class="secondary">Picture-in-Picture</button>
+            <button id="inviteBtn" class="secondary">Invite</button>
           </div>
         </div>
 
@@ -542,6 +741,7 @@
             <div id="userList" class="user-list"></div>
             <div id="readyStatus" class="ready-status"></div>
             <div id="skipVoteStatus" class="skip-vote-status"></div>
+            <div id="kickVoteStatus" class="kick-vote-status"></div>
           </div>
         </div>
       </div>
@@ -550,6 +750,15 @@
 
   <div id="notification" class="notification"></div>
   <div id="connectionStatus" class="connection-status disconnected">Disconnected</div>
+  
+  <!-- Picture-in-Picture Container -->
+  <div id="pipContainer" class="pip-container">
+    <div class="pip-controls">
+      <button class="pip-btn" onclick="closePiP()">×</button>
+      <button class="pip-btn" onclick="togglePiPSize()">⤢</button>
+    </div>
+    <div id="pipVideo"></div>
+  </div>
 
   <script>
     let socket;
@@ -559,9 +768,16 @@
     let hasVotedSkip = false;
     let syncingVideo = false;
     let usersExpanded = true;
+    let userKickVotes = new Map(); // Track kick votes for each user
+    let currentUsers = new Map(); // Track current users with their socket IDs
+    let pipPlayer = null;
+    let isPiPActive = false;
+    let pipSize = 'normal'; // 'normal' or 'large'
 
-    // Railway deployment URL
-    const SERVER_URL = "https://watchtogether-production.up.railway.app/";
+    // Server URL - automatically detects localhost for development
+    const SERVER_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' 
+      ? "http://localhost:3000" 
+      : "https://watchtogether-production.up.railway.app/";
 
     function extractVideoID(url) {
       const match = url.match(/[?&]v=([^&]+)/);
@@ -592,9 +808,16 @@
       }
     }
 
-    function updateVideoTitle(videoId) {
+    function updateVideoTitle(videoId, videoInfo) {
       if (videoId) {
-        document.getElementById("videoTitle").textContent = `https://youtube.com/watch?v=${videoId}`;
+        if (videoInfo && videoInfo.title) {
+          document.getElementById("videoTitle").innerHTML = `
+            <div style="font-weight: 600; margin-bottom: 5px;">${videoInfo.title}</div>
+            <div style="font-size: 0.8em; color: #aaa;">by ${videoInfo.channelTitle}</div>
+          `;
+        } else {
+          document.getElementById("videoTitle").textContent = `https://youtube.com/watch?v=${videoId}`;
+        }
       } else {
         document.getElementById("videoTitle").textContent = "No video selected";
       }
@@ -625,38 +848,291 @@
         return;
       }
 
-      currentRoom = room;
-      document.getElementById("loginSection").style.display = "none";
-      document.getElementById("appSection").style.display = "block";
+      // Connect to server first
+      if (!socket) {
+        console.log("Connecting to:", SERVER_URL);
+        socket = io(SERVER_URL);
+        
+        socket.on("connect", () => {
+          console.log("Connected to server");
+          updateConnectionStatus(true);
+          checkRoom(room, name);
+        });
 
-      console.log("Connecting to:", SERVER_URL);
-      socket = io(SERVER_URL);
-      
-      socket.on("connect", () => {
-        console.log("Connected to server");
-        updateConnectionStatus(true);
-        socket.emit("joinRoom", room, name);
-        showNotification(`Connected to room: ${room}`, "success");
-      });
+        socket.on("disconnect", () => {
+          console.log("Disconnected from server");
+          updateConnectionStatus(false);
+          showNotification("Disconnected from server", "error");
+        });
 
-      socket.on("disconnect", () => {
-        console.log("Disconnected from server");
-        updateConnectionStatus(false);
-        showNotification("Disconnected from server", "error");
-      });
+        socket.on("connect_error", (error) => {
+          console.error("Connection error:", error);
+          updateConnectionStatus(false);
+          showNotification("Failed to connect to server", "error");
+        });
 
-      socket.on("connect_error", (error) => {
-        console.error("Connection error:", error);
-        updateConnectionStatus(false);
-        showNotification("Failed to connect to server", "error");
-      });
-
-      setupSocketListeners();
+        setupSocketListeners();
+      } else {
+        checkRoom(room, name);
+      }
     };
 
+    document.getElementById("createRoomBtn").onclick = () => {
+      const name = document.getElementById("nameInput").value.trim();
+      const room = document.getElementById("roomInput").value.trim();
+      const password = document.getElementById("createPasswordInput").value.trim();
+      
+      if (!name || !room) {
+        showNotification("Please enter both name and room ID", "error");
+        return;
+      }
+
+      currentRoom = room;
+      socket.emit("createRoom", { roomId: room, userName: name, password: password || null });
+    };
+
+    function checkRoom(room, name) {
+      socket.emit("checkRoom", room);
+    }
+
+    function voteKick(userId, userName) {
+      if (currentRoom && socket) {
+        // This is a temporary implementation - the server needs the actual socket ID
+        // For now, we'll send the userName and let the server find the socket ID
+        socket.emit("voteKick", { roomId: currentRoom, targetUserName: userName });
+      }
+    }
+
+    // Video search functionality
+    async function searchVideos(query) {
+      try {
+        const response = await fetch(`${SERVER_URL}/api/search?q=${encodeURIComponent(query)}`);
+        const data = await response.json();
+        
+        if (data.videos) {
+          displaySearchResults(data.videos);
+        } else {
+          showNotification("No videos found", "info");
+        }
+      } catch (error) {
+        console.error("Search error:", error);
+        showNotification("Search failed", "error");
+      }
+    }
+
+    function displaySearchResults(videos) {
+      const resultsContainer = document.getElementById("searchResults");
+      resultsContainer.innerHTML = videos.map(video => `
+        <div class="search-item" onclick="addSearchResult('${video.id}', '${video.title.replace(/'/g, "\\'")}')">
+          <img src="${video.thumbnail}" alt="${video.title}" class="search-thumbnail">
+          <div class="search-info">
+            <div class="search-title">${video.title}</div>
+            <div class="search-channel">${video.channelTitle}</div>
+          </div>
+        </div>
+      `).join('');
+      resultsContainer.style.display = 'block';
+    }
+
+    function addSearchResult(videoId, title) {
+      document.getElementById("videoInput").value = `https://youtube.com/watch?v=${videoId}`;
+      document.getElementById("searchResults").style.display = 'none';
+      document.getElementById("searchInput").value = '';
+      showNotification(`Selected: ${title}`, "success");
+    }
+
+    // Picture-in-Picture functionality
+    function enablePiP() {
+      if (!player || isPiPActive) return;
+      
+      const pipContainer = document.getElementById("pipContainer");
+      const pipVideo = document.getElementById("pipVideo");
+      
+      // Create new player for PiP
+      pipPlayer = new YT.Player('pipVideo', {
+        height: '100%',
+        width: '100%',
+        videoId: player.getVideoData().video_id,
+        playerVars: {
+          'autoplay': 1,
+          'controls': 1,
+          'modestbranding': 1,
+          'rel': 0
+        },
+        events: {
+          'onReady': (event) => {
+            pipPlayer.seekTo(player.getCurrentTime());
+            if (player.getPlayerState() === 1) {
+              pipPlayer.playVideo();
+            } else {
+              pipPlayer.pauseVideo();
+            }
+          }
+        }
+      });
+      
+      pipContainer.style.display = 'block';
+      isPiPActive = true;
+      
+      // Make PiP draggable
+      makeDraggable(pipContainer);
+      
+      showNotification("Picture-in-Picture enabled", "success");
+    }
+
+    function closePiP() {
+      const pipContainer = document.getElementById("pipContainer");
+      pipContainer.style.display = 'none';
+      
+      if (pipPlayer) {
+        pipPlayer.destroy();
+        pipPlayer = null;
+      }
+      
+      isPiPActive = false;
+      showNotification("Picture-in-Picture disabled", "info");
+    }
+
+    function togglePiPSize() {
+      const pipContainer = document.getElementById("pipContainer");
+      
+      if (pipSize === 'normal') {
+        pipContainer.style.width = '400px';
+        pipContainer.style.height = '225px';
+        pipSize = 'large';
+      } else {
+        pipContainer.style.width = '300px';
+        pipContainer.style.height = '169px';
+        pipSize = 'normal';
+      }
+    }
+
+    function makeDraggable(element) {
+      let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+      
+      element.onmousedown = dragMouseDown;
+      
+      function dragMouseDown(e) {
+        e = e || window.event;
+        e.preventDefault();
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        document.onmouseup = closeDragElement;
+        document.onmousemove = elementDrag;
+      }
+      
+      function elementDrag(e) {
+        e = e || window.event;
+        e.preventDefault();
+        pos1 = pos3 - e.clientX;
+        pos2 = pos4 - e.clientY;
+        pos3 = e.clientX;
+        pos4 = e.clientY;
+        element.style.top = (element.offsetTop - pos2) + "px";
+        element.style.left = (element.offsetLeft - pos1) + "px";
+        element.style.bottom = 'auto';
+        element.style.right = 'auto';
+      }
+      
+      function closeDragElement() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+      }
+    }
+
+    // Room invitation functionality
+    function generateInviteLink() {
+      if (!currentRoom) {
+        showNotification("You must be in a room to generate an invite", "error");
+        return;
+      }
+      
+      const inviteUrl = `${window.location.origin}/invite/${currentRoom}`;
+      
+      // Copy to clipboard
+      navigator.clipboard.writeText(inviteUrl).then(() => {
+        showNotification("Invite link copied to clipboard!", "success");
+      }).catch(() => {
+        // Fallback for browsers that don't support clipboard API
+        const textArea = document.createElement("textarea");
+        textArea.value = inviteUrl;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        showNotification("Invite link copied to clipboard!", "success");
+      });
+    }
+
+    // Check for room parameter in URL (from invite links)
+    function checkInviteRoom() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const roomParam = urlParams.get('room');
+      const errorParam = urlParams.get('error');
+      
+      if (errorParam === 'room_not_found') {
+        showNotification("Room not found or no longer active", "error");
+      }
+      
+      if (roomParam) {
+        document.getElementById("roomInput").value = roomParam;
+        showNotification("Room loaded from invite link", "info");
+      }
+    }
+
+    // Initialize invite check when page loads
+    window.addEventListener('load', checkInviteRoom);
+
     function setupSocketListeners() {
-      socket.on("updateQueue", (queue) => {
-        console.log("Queue updated:", queue);
+      socket.on("roomStatus", (data) => {
+        const name = document.getElementById("nameInput").value.trim();
+        const room = document.getElementById("roomInput").value.trim();
+        
+        if (data.exists) {
+          if (data.hasPassword) {
+            // Show password input for existing room
+            document.getElementById("loginTitle").textContent = "Enter Password";
+            document.getElementById("passwordSection").style.display = "block";
+            document.getElementById("createPasswordSection").style.display = "none";
+            document.getElementById("joinBtn").textContent = "Join Room";
+            document.getElementById("createRoomBtn").style.display = "none";
+            document.getElementById("joinBtn").onclick = () => {
+              const password = document.getElementById("passwordInput").value.trim();
+              socket.emit("joinRoom", { roomId: room, userName: name, password: password });
+            };
+          } else {
+            // Join room without password
+            socket.emit("joinRoom", { roomId: room, userName: name, password: null });
+          }
+        } else {
+          // Show create room options
+          document.getElementById("loginTitle").textContent = "Create Room";
+          document.getElementById("passwordSection").style.display = "none";
+          document.getElementById("createPasswordSection").style.display = "block";
+          document.getElementById("joinBtn").style.display = "none";
+          document.getElementById("createRoomBtn").style.display = "block";
+        }
+      });
+
+      socket.on("roomJoined", (data) => {
+        showNotification(`${data.isCreator ? 'Created' : 'Joined'} room: ${data.roomId}`, "success");
+        document.getElementById("loginSection").style.display = "none";
+        document.getElementById("appSection").style.display = "block";
+      });
+
+      socket.on("roomError", (message) => {
+        showNotification(message, "error");
+        // Reset form
+        document.getElementById("passwordInput").value = "";
+        document.getElementById("createPasswordInput").value = "";
+      });
+
+      socket.on("updateQueue", (data) => {
+        // Handle both old format (just array) and new format (object with queue and videoInfoCache)
+        const queue = data.queue || data;
+        const videoInfoCache = data.videoInfoCache || {};
+        
+        console.log("Queue updated:", queue, "Video info cache:", videoInfoCache);
         const queueList = document.getElementById("queueList");
         if (queue.length === 0) {
           queueList.innerHTML = `
@@ -667,12 +1143,21 @@
               <p>Queue is empty</p>
             </div>`;
         } else {
-          queueList.innerHTML = queue.map((videoId, index) => `
-            <div class="queue-item">
-              <div class="queue-number">${index + 1}</div>
-              <div class="queue-title">https://youtube.com/watch?v=${videoId}</div>
-            </div>
-          `).join('');
+          queueList.innerHTML = queue.map((videoId, index) => {
+            const videoInfo = videoInfoCache[videoId];
+            const title = videoInfo ? videoInfo.title : `https://youtube.com/watch?v=${videoId}`;
+            const channel = videoInfo ? ` by ${videoInfo.channelTitle}` : '';
+            
+            return `
+              <div class="queue-item">
+                <div class="queue-number">${index + 1}</div>
+                <div class="queue-title">
+                  <div style="font-weight: 500;">${title}</div>
+                  ${channel ? `<div style="font-size: 12px; color: #888; margin-top: 2px;">${channel}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('');
         }
       });
 
@@ -681,13 +1166,23 @@
         const userList = document.getElementById("userList");
         userList.innerHTML = "";
         
+        // Update current users map
+        currentUsers.clear();
+        
         let readyCount = 0;
-        users.forEach(user => {
+        users.forEach((user, index) => {
+          // Use index as a simple way to identify users since we don't have socket IDs in user objects
+          const userId = `user_${index}_${user.name}`;
+          currentUsers.set(user.name, userId);
+          
           const userDiv = document.createElement("div");
           userDiv.className = "user" + (user.ready ? " ready" : "");
           userDiv.innerHTML = `
             <div class="user-status"></div>
             ${user.name}
+            <div class="user-actions">
+              <button class="kick-btn" onclick="voteKick('${userId}', '${user.name}')">Kick</button>
+            </div>
           `;
           userList.appendChild(userDiv);
           if (user.ready) readyCount++;
@@ -701,9 +1196,11 @@
 
       socket.on("playVideo", (data) => {
         console.log("Play video:", data);
-        updateVideoTitle(data.videoId);
+        updateVideoTitle(data.videoId, data.videoInfo);
         
-        if (player) {
+        const platform = data.platform || 'youtube';
+        
+        if (platform === 'youtube' && player) {
           player.loadVideoById(data.videoId);
           setTimeout(() => {
             if (data.isPaused) {
@@ -714,7 +1211,7 @@
             }
           }, 1000);
         } else {
-          createPlayer(data.videoId);
+          createPlayer(data.videoId, platform);
         }
         
         // Reset skip votes when new video starts
@@ -722,6 +1219,14 @@
         document.getElementById("skipBtn").textContent = "Vote Skip";
         document.getElementById("skipBtn").className = "secondary";
         document.getElementById("skipVoteStatus").style.display = "none";
+      });
+
+      socket.on("videoAdded", (data) => {
+        showNotification(`${data.user} added: ${data.videoInfo.title}`, "success");
+      });
+
+      socket.on("videoError", (data) => {
+        showNotification(data.message, "error");
       });
 
       socket.on("videoStopped", () => {
@@ -737,7 +1242,7 @@
           syncingVideo = true;
           player.seekTo(currentTime, true);
           player.pauseVideo();
-          setTimeout(() => { syncingVideo = false; }, 500);
+          setTimeout(() => { syncingVideo = false; }, 1000); // Increased from 500ms
         }
       });
 
@@ -746,7 +1251,7 @@
           syncingVideo = true;
           player.seekTo(currentTime, true);
           player.playVideo();
-          setTimeout(() => { syncingVideo = false; }, 500);
+          setTimeout(() => { syncingVideo = false; }, 1000); // Increased from 500ms
         }
       });
 
@@ -754,7 +1259,7 @@
         if (player && !syncingVideo) {
           syncingVideo = true;
           player.seekTo(currentTime, true);
-          setTimeout(() => { syncingVideo = false; }, 500);
+          setTimeout(() => { syncingVideo = false; }, 1000); // Increased from 500ms
         }
       });
 
@@ -765,11 +1270,16 @@
       socket.on("skipVoteUpdate", (data) => {
         console.log("Skip vote update:", data);
         const skipStatus = document.getElementById("skipVoteStatus");
-        skipStatus.style.display = "block";
-        skipStatus.innerHTML = `
-          <strong>Skip Vote:</strong> ${data.votes}/${data.total} votes<br>
-          <small>${data.user} ${data.action} their vote</small>
-        `;
+        
+        if (data.votes > 0) {
+          skipStatus.style.display = "block";
+          skipStatus.innerHTML = `
+            <strong>Skip Vote:</strong> ${data.votes}/${data.total} votes<br>
+            <small>${data.user} ${data.action} their vote</small>
+          `;
+        } else {
+          skipStatus.style.display = "none";
+        }
         
         if (data.action === "added") {
           showNotification(`${data.user} voted to skip (${data.votes}/${data.total})`, "warning");
@@ -782,6 +1292,49 @@
         showNotification("Video skipped by vote!", "warning");
         document.getElementById("skipVoteStatus").style.display = "none";
       });
+
+      socket.on("kickVoteUpdate", (data) => {
+        console.log("Kick vote update:", data);
+        const kickStatus = document.getElementById("kickVoteStatus");
+        
+        if (data.votes > 0) {
+          kickStatus.style.display = "block";
+          kickStatus.innerHTML = `
+            <strong>Kick Vote for ${data.targetUser}:</strong> ${data.votes}/${data.required || data.total} votes<br>
+            <small>${data.voter} ${data.action} their vote</small>
+          `;
+        } else {
+          kickStatus.style.display = "none";
+        }
+        
+        if (data.action === "added") {
+          showNotification(`${data.voter} voted to kick ${data.targetUser} (${data.votes}/${data.required || data.total})`, "warning");
+        } else {
+          showNotification(`${data.voter} removed their kick vote (${data.votes}/${data.required || data.total})`, "info");
+        }
+      });
+
+      socket.on("userKicked", (data) => {
+        showNotification(`${data.user} was kicked from the room`, "warning");
+        document.getElementById("kickVoteStatus").style.display = "none";
+        userKickVotes.clear();
+      });
+
+      socket.on("kicked", (data) => {
+        showNotification(`You were kicked from room ${data.room}`, "error");
+        // Reset to login screen
+        document.getElementById("appSection").style.display = "none";
+        document.getElementById("loginSection").style.display = "block";
+        socket = null;
+      });
+
+      socket.on("userJoined", (data) => {
+        showNotification(`${data.userName} joined the room`, "success");
+      });
+
+      socket.on("userLeft", (data) => {
+        showNotification(`${data.userName} left the room`, "info");
+      });
     }
 
     document.getElementById("addVideoBtn").onclick = () => {
@@ -791,12 +1344,34 @@
         return;
       }
       
-      const videoId = extractVideoID(url);
-      console.log("Adding video:", videoId);
-      socket.emit("addVideo", { roomId: currentRoom, videoId });
+      console.log("Adding video:", url);
+      socket.emit("addVideo", { roomId: currentRoom, videoUrl: url });
       document.getElementById("videoInput").value = "";
+      document.getElementById("searchResults").style.display = "none";
       showNotification("Video added to queue", "success");
     };
+
+    // Search functionality
+    document.getElementById("searchBtn").onclick = () => {
+      const query = document.getElementById("searchInput").value.trim();
+      if (!query) {
+        showNotification("Please enter a search term", "error");
+        return;
+      }
+      searchVideos(query);
+    };
+
+    // Picture-in-Picture button
+    document.getElementById("pipBtn").onclick = () => {
+      if (isPiPActive) {
+        closePiP();
+      } else {
+        enablePiP();
+      }
+    };
+
+    // Invite button
+    document.getElementById("inviteBtn").onclick = generateInviteLink;
 
     document.getElementById("skipBtn").onclick = () => {
       if (currentRoom && socket) {
@@ -833,24 +1408,30 @@
       }
     };
 
-    function createPlayer(videoId) {
+    function createPlayer(videoId, platform = 'youtube') {
       const container = document.getElementById('videoContainer');
       container.innerHTML = '';
       
-      player = new YT.Player('videoContainer', {
-        height: '100%',
-        width: '100%',
-        videoId: videoId,
-        playerVars: {
-          'modestbranding': 1,
-          'rel': 0,
-          'showinfo': 0
-        },
-        events: { 
-          'onStateChange': onPlayerStateChange,
-          'onReady': onPlayerReady
-        }
-      });
+      if (platform === 'youtube') {
+        player = new YT.Player('videoContainer', {
+          height: '100%',
+          width: '100%',
+          videoId: videoId,
+          playerVars: {
+            'modestbranding': 1,
+            'rel': 0,
+            'showinfo': 0
+          },
+          events: { 
+            'onStateChange': onPlayerStateChange,
+            'onReady': onPlayerReady
+          }
+        });
+      } else if (platform === 'vimeo') {
+        container.innerHTML = `<iframe src="https://player.vimeo.com/video/${videoId}?autoplay=1" width="100%" height="100%" frameborder="0" allow="autoplay; fullscreen; picture-in-picture"></iframe>`;
+      } else if (platform === 'twitch') {
+        container.innerHTML = `<iframe src="https://player.twitch.tv/?video=${videoId}&parent=${window.location.hostname}&autoplay=true" width="100%" height="100%" frameborder="0"></iframe>`;
+      }
     }
 
     function onPlayerReady(event) {
@@ -878,19 +1459,19 @@
       }
     }
 
-    // Sync seeking with throttling
+    // Sync seeking with reduced aggressiveness
     let lastSeekTime = 0;
     setInterval(() => {
       if (player && player.getCurrentTime && !syncingVideo) {
         const currentTime = player.getCurrentTime();
-        if (Math.abs(currentTime - lastSeekTime) > 2) {
+        if (Math.abs(currentTime - lastSeekTime) > 3) { // Increased threshold from 2 to 3 seconds
           socket.emit("seekVideo", { roomId: currentRoom, currentTime });
           lastSeekTime = currentTime;
         } else {
           lastSeekTime = currentTime;
         }
       }
-    }, 1000);
+    }, 2000); // Increased interval from 1000ms to 2000ms
 
     // Handle Enter key for inputs
     document.getElementById("nameInput").addEventListener("keypress", (e) => {
@@ -903,6 +1484,18 @@
     
     document.getElementById("videoInput").addEventListener("keypress", (e) => {
       if (e.key === "Enter") document.getElementById("addVideoBtn").click();
+    });
+    
+    document.getElementById("searchInput").addEventListener("keypress", (e) => {
+      if (e.key === "Enter") document.getElementById("searchBtn").click();
+    });
+    
+    // Hide search results when clicking outside
+    document.addEventListener("click", (e) => {
+      const searchContainer = document.querySelector(".search-container");
+      if (!searchContainer.contains(e.target)) {
+        document.getElementById("searchResults").style.display = "none";
+      }
     });
   </script>
 </body>
