@@ -64,8 +64,8 @@
     }
 
     .main-content {
-      display: grid;
-      grid-template-columns: 1fr 350px;
+      display: flex;
+      flex-direction: column;
       gap: 30px;
       margin-bottom: 30px;
     }
@@ -76,12 +76,67 @@
       border-radius: 20px;
       padding: 25px;
       backdrop-filter: blur(10px);
+      order: 1;
     }
 
-    .sidebar {
+    .queue-section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+      order: 2;
+    }
+
+    .users-section {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 20px;
+      padding: 25px;
+      backdrop-filter: blur(10px);
+      order: 3;
+    }
+
+    .users-toggle {
       display: flex;
-      flex-direction: column;
-      gap: 20px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 20px;
+      cursor: pointer;
+      padding: 10px 15px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.05);
+      transition: all 0.3s ease;
+    }
+
+    .users-toggle:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .users-content {
+      transition: all 0.3s ease;
+      overflow: hidden;
+    }
+
+    .users-content.collapsed {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+    }
+
+    .users-content.expanded {
+      max-height: 500px;
+      opacity: 1;
+      margin-top: 0;
+    }
+
+    .toggle-icon {
+      transition: transform 0.3s ease;
+      font-size: 1.2rem;
+    }
+
+    .toggle-icon.rotated {
+      transform: rotate(180deg);
     }
 
     .current-video {
@@ -195,13 +250,6 @@
       box-shadow: 0 10px 20px rgba(16, 172, 132, 0.3);
     }
 
-    .users-section, .queue-section {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 20px;
-      padding: 25px;
-      backdrop-filter: blur(10px);
-    }
 
     .section-title {
       font-size: 1.2rem;
@@ -371,12 +419,7 @@
     /* Responsive design */
     @media (max-width: 1024px) {
       .main-content {
-        grid-template-columns: 1fr;
         gap: 20px;
-      }
-      
-      .sidebar {
-        order: -1;
       }
     }
 
@@ -395,6 +438,10 @@
       
       .input-group {
         min-width: unset;
+      }
+      
+      .queue-list {
+        max-height: 300px;
       }
     }
   </style>
@@ -417,6 +464,7 @@
 
     <div id="appSection" class="app-section">
       <div class="main-content">
+        <!-- Video Player Section - Top Priority -->
         <div class="video-section">
           <div class="current-video">
             <h2>Now Playing</h2>
@@ -442,24 +490,30 @@
           </div>
         </div>
 
-        <div class="sidebar">
-          <div class="users-section">
-            <h3 class="section-title">Users in Room</h3>
+        <!-- Queue Section - Below Video -->
+        <div class="queue-section">
+          <h3 class="section-title">Up Next</h3>
+          <div id="queueList" class="queue-list">
+            <div class="empty-state">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M15,6H3V8H15V6M15,10H3V12H15V10M3,16H11V14H3V16M17,6V14.5L22,9.5L17,6Z" />
+              </svg>
+              <p>Queue is empty</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Users Section - Collapsible -->
+        <div class="users-section">
+          <div class="users-toggle" onclick="toggleUsers()">
+            <h3 class="section-title" style="margin-bottom: 0;">Users in Room</h3>
+            <span class="toggle-icon" id="usersToggleIcon">▼</span>
+          </div>
+          
+          <div id="usersContent" class="users-content expanded">
             <div id="userList" class="user-list"></div>
             <div id="readyStatus" class="ready-status"></div>
             <div id="skipVoteStatus" class="skip-vote-status"></div>
-          </div>
-
-          <div class="queue-section">
-            <h3 class="section-title">Up Next</h3>
-            <div id="queueList" class="queue-list">
-              <div class="empty-state">
-                <svg viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M15,6H3V8H15V6M15,10H3V12H15V10M3,16H11V14H3V16M17,6V14.5L22,9.5L17,6Z" />
-                </svg>
-                <p>Queue is empty</p>
-              </div>
-            </div>
           </div>
         </div>
       </div>
@@ -475,6 +529,7 @@
     let isReady = false;
     let hasVotedSkip = false;
     let syncingVideo = false;
+    let usersExpanded = true;
 
     function extractVideoID(url) {
       const match = url.match(/[?&]v=([^&]+)/);
@@ -494,8 +549,28 @@
       }, 4000);
     }
 
-    function updateVideoTitle(title) {
-      document.getElementById("videoTitle").textContent = title || "No video selected";
+    function updateVideoTitle(videoId) {
+      if (videoId) {
+        document.getElementById("videoTitle").textContent = `https://youtube.com/watch?v=${videoId}`;
+      } else {
+        document.getElementById("videoTitle").textContent = "No video selected";
+      }
+    }
+
+    function toggleUsers() {
+      usersExpanded = !usersExpanded;
+      const content = document.getElementById("usersContent");
+      const icon = document.getElementById("usersToggleIcon");
+      
+      if (usersExpanded) {
+        content.className = "users-content expanded";
+        icon.textContent = "▼";
+        icon.classList.remove("rotated");
+      } else {
+        content.className = "users-content collapsed";
+        icon.textContent = "▶";
+        icon.classList.add("rotated");
+      }
     }
 
     document.getElementById("joinBtn").onclick = () => {
@@ -526,10 +601,10 @@
               <p>Queue is empty</p>
             </div>`;
         } else {
-          queueList.innerHTML = queue.map((video, index) => `
+          queueList.innerHTML = queue.map((videoId, index) => `
             <div class="queue-item">
               <div class="queue-number">${index + 1}</div>
-              <div class="queue-title">${video.title}</div>
+              <div class="queue-title">https://youtube.com/watch?v=${videoId}</div>
             </div>
           `).join('');
         }
@@ -558,7 +633,7 @@
       });
 
       socket.on("playVideo", (data) => {
-        updateVideoTitle(data.title);
+        updateVideoTitle(data.videoId);
         
         if (player) {
           player.loadVideoById(data.videoId);
@@ -585,7 +660,7 @@
         if (player) {
           player.stopVideo();
         }
-        updateVideoTitle("No video selected");
+        updateVideoTitle(null);
       });
 
       socket.on("syncPause", (currentTime) => {
