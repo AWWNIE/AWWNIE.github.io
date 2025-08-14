@@ -53,6 +53,15 @@ app.get("/health", (req, res) => {
   });
 });
 
+// Test YouTube API key
+app.get("/api/test-key", (req, res) => {
+  res.json({ 
+    hasKey: !!YOUTUBE_API_KEY,
+    keyLength: YOUTUBE_API_KEY ? YOUTUBE_API_KEY.length : 0,
+    keyPreview: YOUTUBE_API_KEY ? YOUTUBE_API_KEY.substring(0, 10) + '...' : 'No key'
+  });
+});
+
 // Secure video search endpoint
 app.get("/api/search", (req, res) => {
   const query = req.query.q;
@@ -60,7 +69,13 @@ app.get("/api/search", (req, res) => {
     return res.status(400).json({ error: "Search query required" });
   }
   
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q=${encodeURIComponent(query)}&type=video&eventType=live,completed&key=${YOUTUBE_API_KEY}`;
+  if (!YOUTUBE_API_KEY) {
+    return res.status(500).json({ error: "YouTube API key not configured" });
+  }
+  
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`;
+  
+  console.log(`YouTube API request: ${url.replace(YOUTUBE_API_KEY, 'API_KEY_HIDDEN')}`);
   
   https.get(url, (apiRes) => {
     let data = '';
@@ -72,7 +87,9 @@ app.get("/api/search", (req, res) => {
     apiRes.on('end', () => {
       try {
         const response = JSON.parse(data);
-        if (response.items) {
+        console.log('YouTube API response:', JSON.stringify(response, null, 2));
+        
+        if (response.items && response.items.length > 0) {
           const videos = response.items.map(item => ({
             id: item.id.videoId,
             title: item.snippet.title,
@@ -80,12 +97,17 @@ app.get("/api/search", (req, res) => {
             thumbnail: item.snippet.thumbnails.medium.url,
             description: item.snippet.description
           }));
+          console.log(`Found ${videos.length} videos for query: ${query}`);
           res.json({ videos });
         } else {
-          res.status(404).json({ error: "No videos found" });
+          console.log(`No videos found for query: ${query}`);
+          console.log('API Response:', response);
+          res.status(404).json({ error: "No videos found", details: response.error || "Unknown error" });
         }
       } catch (error) {
-        res.status(500).json({ error: "Search failed" });
+        console.error('YouTube search parsing error:', error);
+        console.log('Raw response data:', data);
+        res.status(500).json({ error: "Search failed", details: error.message });
       }
     });
   }).on('error', (error) => {
@@ -239,7 +261,10 @@ io.on("connection", (socket) => {
     console.log(`User ${userName} created room ${roomId} ${password ? 'with password' : 'without password'}`);
     
     socket.emit("roomJoined", { roomId, isCreator: true });
-    socket.emit("updateQueue", rooms[roomId].queue);
+    socket.emit("updateQueue", { 
+      queue: rooms[roomId].queue,
+      videoInfoCache: rooms[roomId].videoInfoCache
+    });
     socket.emit("updateUsers", Object.values(rooms[roomId].users));
   });
 
@@ -262,22 +287,45 @@ io.on("connection", (socket) => {
     
     socket.emit("roomJoined", { roomId, isCreator: false });
     
-    // Send current room state to the joining user
-    socket.emit("updateQueue", rooms[roomId].queue);
+    // Send complete room state to the joining user immediately
+    socket.emit("updateQueue", { 
+      queue: rooms[roomId].queue,
+      videoInfoCache: rooms[roomId].videoInfoCache
+    });
     
-    // Send current video to new user if one is playing with more accurate sync
+    socket.emit("updateUsers", Object.values(rooms[roomId].users));
+    
+    // Send current video state to new user if one is playing
     if (rooms[roomId].currentVideo) {
-      // Add a small delay to ensure the user interface is ready
+      const videoKey = rooms[roomId].currentVideo;
+      const videoInfo = rooms[roomId].videoInfoCache[videoKey];
+      
+      // Extract platform and ID from video key
+      const [platform, videoId] = videoKey.includes('_') ? videoKey.split('_') : ['youtube', videoKey];
+      
+      console.log(`Sending current video to ${userName}: ${videoKey} (${platform}:${videoId})`);
+      
+      // Send immediately, then sync after UI loads
+      socket.emit("playVideo", {
+        videoId: videoId,
+        platform: platform,
+        isPaused: rooms[roomId].isPaused,
+        currentTime: rooms[roomId].currentTime,
+        videoInfo: videoInfo
+      });
+      
+      // Additional sync after a delay to ensure proper loading
       setTimeout(() => {
-        socket.emit("playVideo", {
-          videoId: rooms[roomId].currentVideo,
-          isPaused: rooms[roomId].isPaused,
-          currentTime: rooms[roomId].currentTime
-        });
-      }, 500);
+        if (rooms[roomId] && rooms[roomId].users[socket.id]) {
+          socket.emit("syncTime", {
+            currentTime: rooms[roomId].currentTime,
+            isPaused: rooms[roomId].isPaused
+          });
+        }
+      }, 2000);
     }
     
-    // Notify all users in room about the new user (including the joining user)
+    // Notify all users in room about the updated user list
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
     
     // Send join notification to other users (not the joining user)
@@ -657,6 +705,35 @@ io.on("connection", (socket) => {
     }
   });
 
+  socket.on("refreshRoomState", (roomId) => {
+    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) {
+      console.log(`Invalid refresh room state for ${socket.id} in room ${roomId}`);
+      return;
+    }
+
+    console.log(`Refreshing room state for ${rooms[roomId].users[socket.id].name} in room ${roomId}`);
+    
+    // Send complete room state
+    socket.emit("updateQueue", { 
+      queue: rooms[roomId].queue,
+      videoInfoCache: rooms[roomId].videoInfoCache
+    });
+    
+    socket.emit("updateUsers", Object.values(rooms[roomId].users));
+    
+    // Send current video state if one is playing
+    if (rooms[roomId].currentVideo) {
+      const videoKey = rooms[roomId].currentVideo;
+      const videoInfo = rooms[roomId].videoInfoCache[videoKey];
+      const [platform, videoId] = videoKey.includes('_') ? videoKey.split('_') : ['youtube', videoKey];
+      
+      socket.emit("syncTime", {
+        currentTime: rooms[roomId].currentTime,
+        isPaused: rooms[roomId].isPaused
+      });
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
     
@@ -667,6 +744,18 @@ io.on("connection", (socket) => {
         rooms[roomId].readyUsers.delete(socket.id);
         rooms[roomId].skipVotes.delete(socket.id);
         
+        // Clean up kick votes involving this user
+        Object.keys(rooms[roomId].kickVotes).forEach(targetUserId => {
+          if (targetUserId === socket.id) {
+            delete rooms[roomId].kickVotes[targetUserId];
+          } else {
+            rooms[roomId].kickVotes[targetUserId].delete(socket.id);
+            if (rooms[roomId].kickVotes[targetUserId].size === 0) {
+              delete rooms[roomId].kickVotes[targetUserId];
+            }
+          }
+        });
+        
         const remainingUsers = Object.keys(rooms[roomId].users).length;
         console.log(`User ${userName} left room ${roomId}. Remaining users: ${remainingUsers}`);
         
@@ -674,6 +763,7 @@ io.on("connection", (socket) => {
           console.log(`Room ${roomId} is empty, cleaning up...`);
           delete rooms[roomId];
         } else {
+          // Send updated user list to all remaining users
           io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
           // Send leave notification to remaining users
           io.to(roomId).emit("userLeft", { userName });
