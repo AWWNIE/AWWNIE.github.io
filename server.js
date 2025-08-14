@@ -15,7 +15,7 @@ const io = new Server(server, {
 });
 
 app.get("/", (req, res) => {
-  res.send("Watch Together backend is running!");
+  res.send("WatchTogether backend is running!");
 });
 
 const rooms = {};
