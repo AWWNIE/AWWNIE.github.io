@@ -3,10 +3,14 @@ const http = require("http");
 const { Server } = require("socket.io");
 const cors = require("cors");
 const https = require("https");
+const path = require("path");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Serve static files (HTML, CSS, JS)
+app.use(express.static(path.join(__dirname)));
 
 const server = http.createServer(app);
 
@@ -26,7 +30,13 @@ const io = new Server(server, {
   }
 });
 
+// Serve the main HTML file
 app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// API status endpoint
+app.get("/api/status", (req, res) => {
   res.json({
     status: "WatchTogether backend is running!",
     timestamp: new Date().toISOString(),
@@ -98,10 +108,10 @@ app.get("/invite/:roomId", (req, res) => {
 const rooms = {};
 
 // YouTube Data API v3 configuration (keep this private)
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || "AIzaSyA7TDHt3oyVHW78Dk-f7WTPXPjZwdEEU98";
 
-// Room expiration - auto-delete inactive rooms after 6 hours
-const ROOM_EXPIRATION_TIME = 6 * 60 * 60 * 1000; // 6 hours in milliseconds
+// Room expiration - auto-delete inactive rooms after 2 hours
+const ROOM_EXPIRATION_TIME = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
 function cleanupInactiveRooms() {
   const now = Date.now();
