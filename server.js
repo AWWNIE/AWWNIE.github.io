@@ -162,6 +162,32 @@ function updateRoomActivity(roomId) {
   }
 }
 
+// Function to update admin status - longest staying user becomes admin
+function updateRoomAdmin(roomId) {
+  if (!rooms[roomId] || Object.keys(rooms[roomId].users).length === 0) return;
+  
+  let earliestJoinTime = Infinity;
+  let adminSocketId = null;
+  
+  // Find user with earliest join time
+  for (const [socketId, user] of Object.entries(rooms[roomId].users)) {
+    if (user.joinTime < earliestJoinTime) {
+      earliestJoinTime = user.joinTime;
+      adminSocketId = socketId;
+    }
+  }
+  
+  // Update admin status
+  for (const [socketId, user] of Object.entries(rooms[roomId].users)) {
+    const wasAdmin = user.isAdmin;
+    user.isAdmin = (socketId === adminSocketId);
+    
+    if (user.isAdmin && !wasAdmin) {
+      console.log(`${user.name} is now admin of room ${roomId}`);
+    }
+  }
+}
+
 // Multi-platform video support
 function parseVideoUrl(url) {
   // YouTube
@@ -257,8 +283,13 @@ io.on("connection", (socket) => {
     };
 
     socket.join(roomId);
-    rooms[roomId].users[socket.id] = { name: userName, ready: false };
-    console.log(`User ${userName} created room ${roomId} ${password ? 'with password' : 'without password'}`);
+    rooms[roomId].users[socket.id] = { 
+      name: userName, 
+      ready: false, 
+      joinTime: Date.now(),
+      isAdmin: true // First user is admin
+    };
+    console.log(`User ${userName} created room ${roomId} ${password ? 'with password' : 'without password'} as admin`);
     
     socket.emit("roomJoined", { roomId, isCreator: true });
     socket.emit("updateQueue", { 
@@ -281,7 +312,12 @@ io.on("connection", (socket) => {
       return;
     }
 
-    rooms[roomId].users[socket.id] = { name: userName, ready: false };
+    rooms[roomId].users[socket.id] = { 
+      name: userName, 
+      ready: false, 
+      joinTime: Date.now(),
+      isAdmin: false // Joining users are not admin initially
+    };
     updateRoomActivity(roomId);
     console.log(`User ${userName} (${socket.id}) joined room ${roomId}. Total users: ${Object.keys(rooms[roomId].users).length}`);
     
@@ -324,6 +360,9 @@ io.on("connection", (socket) => {
         }
       }, 2000);
     }
+    
+    // Update admin status after user joins
+    updateRoomAdmin(roomId);
     
     // Notify all users in room about the updated user list
     io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
@@ -556,6 +595,12 @@ io.on("connection", (socket) => {
       return;
     }
     
+    // Check if the user requesting the kick is an admin
+    if (!rooms[roomId].users[socket.id].isAdmin) {
+      socket.emit("kickError", "Only room admin can kick users");
+      return;
+    }
+    
     // Find target user by name
     let targetUserId = null;
     for (const [socketId, user] of Object.entries(rooms[roomId].users)) {
@@ -567,86 +612,46 @@ io.on("connection", (socket) => {
     
     if (!targetUserId) {
       console.log(`Target user ${targetUserName} not found in room ${roomId}`);
+      socket.emit("kickError", "User not found in room");
       return;
     }
     
-    const voterName = rooms[roomId].users[socket.id].name;
+    const adminName = rooms[roomId].users[socket.id].name;
     const targetName = targetUserName;
     
-    // Can't vote to kick yourself
+    // Can't kick yourself
     if (socket.id === targetUserId) {
+      socket.emit("kickError", "You cannot kick yourself");
       return;
     }
     
-    // Initialize kick vote for target if it doesn't exist
-    if (!rooms[roomId].kickVotes[targetUserId]) {
-      rooms[roomId].kickVotes[targetUserId] = new Set();
+    console.log(`Admin ${adminName} is kicking ${targetName} from room ${roomId}`);
+    
+    // Remove user from room immediately (admin kick)
+    delete rooms[roomId].users[targetUserId];
+    rooms[roomId].readyUsers.delete(targetUserId);
+    rooms[roomId].skipVotes.delete(targetUserId);
+    
+    // Clean up any kick votes for this user
+    delete rooms[roomId].kickVotes[targetUserId];
+    
+    // Remove user from socket room and disconnect
+    const targetSocket = io.sockets.sockets.get(targetUserId);
+    if (targetSocket) {
+      targetSocket.leave(roomId);
+      targetSocket.emit("kicked", { reason: "admin", room: roomId });
+      // Force disconnect after a short delay
+      setTimeout(() => {
+        targetSocket.disconnect(true);
+      }, 1000);
     }
     
-    if (rooms[roomId].kickVotes[targetUserId].has(socket.id)) {
-      // Remove vote
-      rooms[roomId].kickVotes[targetUserId].delete(socket.id);
-      console.log(`${voterName} removed kick vote for ${targetName} in room ${roomId}`);
-      
-      const votes = rooms[roomId].kickVotes[targetUserId].size;
-      const totalUsers = Object.keys(rooms[roomId].users).length;
-      
-      io.to(roomId).emit("kickVoteUpdate", {
-        targetUser: targetName,
-        votes: votes,
-        total: totalUsers - 1, // Excluding the target user
-        action: "removed",
-        voter: voterName
-      });
-      
-      // Clean up empty kick vote sets
-      if (votes === 0) {
-        delete rooms[roomId].kickVotes[targetUserId];
-      }
-    } else {
-      // Add vote
-      rooms[roomId].kickVotes[targetUserId].add(socket.id);
-      console.log(`${voterName} voted to kick ${targetName} in room ${roomId}`);
-      
-      const totalUsers = Object.keys(rooms[roomId].users).length;
-      const kickVotes = rooms[roomId].kickVotes[targetUserId].size;
-      const requiredVotes = Math.ceil((totalUsers - 1) / 2); // Majority of users excluding target
-      
-      io.to(roomId).emit("kickVoteUpdate", {
-        targetUser: targetName,
-        votes: kickVotes,
-        total: totalUsers - 1,
-        required: requiredVotes,
-        action: "added",
-        voter: voterName
-      });
-      
-      // Check if enough votes to kick
-      if (kickVotes >= requiredVotes) {
-        console.log(`Kick vote passed for ${targetName} in room ${roomId} (${kickVotes}/${requiredVotes})`);
-        
-        // Remove user from room
-        delete rooms[roomId].users[targetUserId];
-        rooms[roomId].readyUsers.delete(targetUserId);
-        rooms[roomId].skipVotes.delete(targetUserId);
-        delete rooms[roomId].kickVotes[targetUserId];
-        
-        // Remove user from socket room and disconnect
-        const targetSocket = io.sockets.sockets.get(targetUserId);
-        if (targetSocket) {
-          targetSocket.leave(roomId);
-          targetSocket.emit("kicked", { reason: "vote", room: roomId });
-          // Force disconnect after a short delay
-          setTimeout(() => {
-            targetSocket.disconnect(true);
-          }, 1000);
-        }
-        
-        // Notify remaining users
-        io.to(roomId).emit("userKicked", { user: targetName, reason: "vote" });
-        io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
-      }
-    }
+    // Update admin status after user removal
+    updateRoomAdmin(roomId);
+    
+    // Notify remaining users
+    io.to(roomId).emit("userKicked", { user: targetName, reason: "admin", kickedBy: adminName });
+    io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
   });
 
   socket.on("pauseVideo", ({ roomId, currentTime }) => {
@@ -763,6 +768,9 @@ io.on("connection", (socket) => {
           console.log(`Room ${roomId} is empty, cleaning up...`);
           delete rooms[roomId];
         } else {
+          // Update admin status after user leaves
+          updateRoomAdmin(roomId);
+          
           // Send updated user list to all remaining users
           io.to(roomId).emit("updateUsers", Object.values(rooms[roomId].users));
           // Send leave notification to remaining users
