@@ -27,7 +27,7 @@ async function getVideoTitle(videoId) {
     const options = {
       hostname: 'www.googleapis.com',
       port: 443,
-      path: `/youtube/v3/videos?part=snippet&id=${videoId}&key=AIzaSyDummy_Key_Replace_With_Real_One`,
+      path: `/youtube/v3/videos?part=snippet&id=${videoId}&key=AIzaSyBPLvXVH3vgDbXkUYW-XfO-lCdIKJfFsIo`,
       method: 'GET'
     };
 
