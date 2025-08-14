@@ -20,7 +20,7 @@
   </div>
 
   <div id="app" style="display:none;">
-    <input type="text" id="videoInput" placeholder="YouTube Video ID">
+    <input type="text" id="videoInput" placeholder="YouTube video URL or ID">
     <button id="addVideoBtn">Add Video</button>
 
     <h3>Queue:</h3>
@@ -34,6 +34,14 @@
     let player;
     let currentRoom = "";
 
+    function extractVideoID(url) {
+      const match = url.match(/[?&]v=([^&]+)/);
+      if (match && match[1]) return match[1];
+      const shortMatch = url.match(/youtu\.be\/([^?&]+)/);
+      if (shortMatch && shortMatch[1]) return shortMatch[1];
+      return url;
+    }
+
     document.getElementById("joinBtn").onclick = () => {
       const name = document.getElementById("nameInput").value;
       const room = document.getElementById("roomInput").value;
@@ -42,8 +50,7 @@
       currentRoom = room;
       document.getElementById("app").style.display = "block";
 
-      // Connect socket
-      socket = io("https://awwniegithubio-production.up.railway.app/"); // <-- Replace with Railway URL
+      socket = io("https://YOUR_BACKEND_URL"); // Replace with Railway URL
       socket.emit("joinRoom", room, name);
 
       socket.on("updateQueue", (queue) => {
@@ -63,8 +70,9 @@
     };
 
     document.getElementById("addVideoBtn").onclick = () => {
-      const videoId = document.getElementById("videoInput").value.trim();
-      if (!videoId) return;
+      const url = document.getElementById("videoInput").value.trim();
+      if (!url) return;
+      const videoId = extractVideoID(url);
       socket.emit("addVideo", { roomId: currentRoom, videoId });
       document.getElementById("videoInput").value = "";
     };
@@ -74,14 +82,11 @@
         height: '390',
         width: '640',
         videoId: videoId,
-        events: {
-          'onStateChange': onPlayerStateChange
-        }
+        events: { 'onStateChange': onPlayerStateChange }
       });
     }
 
     function onPlayerStateChange(event) {
-      // When video ends
       if (event.data === YT.PlayerState.ENDED) {
         socket.emit("videoEnded", currentRoom);
       }
