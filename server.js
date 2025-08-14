@@ -60,7 +60,7 @@ app.get("/api/search", (req, res) => {
     return res.status(400).json({ error: "Search query required" });
   }
   
-  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q=${encodeURIComponent(query)}&type=video&key=${YOUTUBE_API_KEY}`;
+  const url = `https://www.googleapis.com/youtube/v3/search?part=snippet&maxResults=10&q=${encodeURIComponent(query)}&type=video&eventType=live,completed&key=${YOUTUBE_API_KEY}`;
   
   https.get(url, (apiRes) => {
     let data = '';
@@ -624,6 +624,37 @@ io.on("connection", (socket) => {
     
     rooms[roomId].currentTime = currentTime;
     socket.to(roomId).emit("syncSeek", currentTime);
+  });
+
+  socket.on("removeFromQueue", ({ roomId, queueIndex }) => {
+    if (!rooms[roomId] || !rooms[roomId].users[socket.id]) {
+      console.log(`Invalid remove from queue for room ${roomId}`);
+      return;
+    }
+
+    updateRoomActivity(roomId);
+    
+    if (queueIndex >= 0 && queueIndex < rooms[roomId].queue.length) {
+      const removedVideoId = rooms[roomId].queue[queueIndex];
+      const removedVideoInfo = rooms[roomId].videoInfoCache[removedVideoId];
+      
+      rooms[roomId].queue.splice(queueIndex, 1);
+      
+      console.log(`Removed video at index ${queueIndex} from room ${roomId}`);
+      
+      // Notify all users about queue update
+      io.to(roomId).emit("updateQueue", { 
+        queue: rooms[roomId].queue,
+        videoInfoCache: rooms[roomId].videoInfoCache
+      });
+      
+      // Notify about removal
+      const userName = rooms[roomId].users[socket.id].name;
+      io.to(roomId).emit("videoRemoved", {
+        user: userName,
+        videoInfo: removedVideoInfo || { title: "Video" }
+      });
+    }
   });
 
   socket.on("disconnect", () => {
