@@ -98,7 +98,7 @@ app.get("/invite/:roomId", (req, res) => {
 const rooms = {};
 
 // YouTube Data API v3 configuration (keep this private)
-const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || "AIzaSyA7TDHt3oyVHW78Dk-f7WTPXPjZwdEEU98";
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY;
 
 // Room expiration - auto-delete inactive rooms after 2 hours
 const ROOM_EXPIRATION_TIME = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
