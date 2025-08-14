@@ -6,8 +6,19 @@ const https = require("https");
 
 const app = express();
 app.use(cors());
+app.use(express.json());
 
 const server = http.createServer(app);
+
+// Add error handling
+server.on('error', (err) => {
+  console.error('Server error:', err);
+});
+
+app.use((err, req, res, next) => {
+  console.error('Express error:', err);
+  res.status(500).send('Something broke!');
+});
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -16,7 +27,20 @@ const io = new Server(server, {
 });
 
 app.get("/", (req, res) => {
-  res.send("WatchTogether backend is running!");
+  res.json({
+    status: "WatchTogether backend is running!",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
 });
 
 // Secure video search endpoint
@@ -616,6 +640,26 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+
+// Handle graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('SIGTERM received, shutting down gracefully...');
+  server.close(() => {
+    console.log('Process terminated');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('SIGINT received, shutting down gracefully...');
+  server.close(() => {
+    console.log('Process terminated');
+    process.exit(0);
+  });
+});
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`YouTube API Key configured: ${!!process.env.YOUTUBE_API_KEY}`);
 });
