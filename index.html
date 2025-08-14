@@ -37,7 +37,7 @@
       const room = document.getElementById("room").value;
       if (!name || !room) return alert("Enter name and room ID");
 
-      socket = io("https://www.awwniegithubio-production.up.railway.app"); // <-- replace with backend URL
+      socket = io("awwniegithubio-production.up.railway.app"); // <-- replace with backend URL
       socket.emit("joinRoom", { roomId: room, name });
 
       socket.on("queueUpdated", renderQueue);
