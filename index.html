@@ -582,7 +582,7 @@
       document.getElementById("loginSection").style.display = "none";
       document.getElementById("appSection").style.display = "block";
 
-      socket = io("https://awwniegithubio-production-02b2.up.railway.app/");
+      socket = io("https://watchtogether-production.up.railway.app/");
       socket.emit("joinRoom", room, name);
 
       setupSocketListeners();
