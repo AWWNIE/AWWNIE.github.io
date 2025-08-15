@@ -72,11 +72,13 @@ io.on('connection', (socket) => {
       isHost,
       currentVideo: room.currentVideo,
       videoState: room.videoState,
-      queue: room.queue
+      queue: room.queue,
+      userCount: room.users.size
     });
 
-    socket.to(roomId).emit('user-joined', { userId: socket.id, userCount: room.users.size });
-    console.log(`User ${socket.id} joined room ${roomId}`);
+    // Notify ALL users in the room (including the one who just joined) about the updated user count
+    io.to(roomId).emit('user-count-updated', { userCount: room.users.size });
+    console.log(`User ${socket.id} joined room ${roomId}. Total users: ${room.users.size}`);
   });
 
   socket.on('load-video', (data) => {
@@ -107,6 +109,7 @@ io.on('connection', (socket) => {
       lastUpdate: Date.now()
     };
 
+    console.log(`Video play event from ${socket.id} in room ${socket.roomId}:`, room.videoState);
     socket.to(socket.roomId).emit('video-play', room.videoState);
   });
 
@@ -120,6 +123,7 @@ io.on('connection', (socket) => {
       lastUpdate: Date.now()
     };
 
+    console.log(`Video pause event from ${socket.id} in room ${socket.roomId}:`, room.videoState);
     socket.to(socket.roomId).emit('video-pause', room.videoState);
   });
 
@@ -133,6 +137,7 @@ io.on('connection', (socket) => {
       lastUpdate: Date.now()
     };
 
+    console.log(`Video seek event from ${socket.id} in room ${socket.roomId}:`, room.videoState);
     socket.to(socket.roomId).emit('video-seek', room.videoState);
   });
 
@@ -197,10 +202,9 @@ io.on('connection', (socket) => {
           rooms.delete(socket.roomId);
           console.log(`Room ${socket.roomId} deleted - no users left`);
         } else {
-          socket.to(socket.roomId).emit('user-left', { 
-            userId: socket.id, 
-            userCount: room.users.size 
-          });
+          // Notify ALL remaining users about the updated user count
+          io.to(socket.roomId).emit('user-count-updated', { userCount: room.users.size });
+          console.log(`User ${socket.id} left room ${socket.roomId}. Remaining users: ${room.users.size}`);
         }
       }
     }

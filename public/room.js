@@ -9,6 +9,8 @@ class YouTubeSyncApp {
         this.isHost = false;
         this.isUpdatingFromRemote = false;
         this.pendingVideoId = null;
+        this.lastKnownTime = 0;
+        this.seekCheckInterval = null;
         
         this.initializeElements();
         this.setupEventListeners();
@@ -76,6 +78,11 @@ class YouTubeSyncApp {
             this.isHost = data.isHost;
             this.updateRoomInfo();
             
+            // Update user count from room-joined data
+            if (data.userCount) {
+                this.userCountSpan.textContent = data.userCount;
+            }
+            
             if (data.currentVideo) {
                 this.loadYouTubeVideo(data.currentVideo);
                 if (data.videoState) {
@@ -109,11 +116,8 @@ class YouTubeSyncApp {
             this.syncVideoState(data);
         });
 
-        this.socket.on('user-joined', (data) => {
-            this.userCountSpan.textContent = data.userCount;
-        });
-
-        this.socket.on('user-left', (data) => {
+        this.socket.on('user-count-updated', (data) => {
+            console.log('User count updated:', data.userCount);
             this.userCountSpan.textContent = data.userCount;
         });
 
@@ -234,9 +238,23 @@ class YouTubeSyncApp {
     }
 
     extractVideoId(url) {
-        const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
+        // Enhanced regex to support multiple YouTube URL formats:
+        // - https://www.youtube.com/watch?v=VIDEO_ID
+        // - https://youtu.be/VIDEO_ID
+        // - https://www.youtube.com/live/VIDEO_ID
+        // - https://youtube.com/embed/VIDEO_ID
+        // - https://www.youtube.com/v/VIDEO_ID
+        // - Mobile share links with ?si= parameter
+        const regex = /(?:youtube\.com\/(?:watch\?v=|embed\/|v\/|live\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/live\/)([a-zA-Z0-9_-]{11})/;
         const match = url.match(regex);
-        return match ? match[1] : null;
+        
+        if (match) {
+            console.log('Extracted video ID:', match[1], 'from URL:', url);
+            return match[1];
+        }
+        
+        console.log('Failed to extract video ID from URL:', url);
+        return null;
     }
 
     loadYouTubeVideo(videoId) {
@@ -274,8 +292,12 @@ class YouTubeSyncApp {
     }
 
     syncVideoState(state) {
-        if (!this.player || this.isUpdatingFromRemote) return;
+        if (!this.player || !this.playerReady) {
+            console.log('Cannot sync - player not ready');
+            return;
+        }
 
+        console.log('Syncing video state:', state);
         this.isUpdatingFromRemote = true;
         
         const timeDiff = Date.now() - state.lastUpdate;
@@ -285,17 +307,24 @@ class YouTubeSyncApp {
             targetTime += timeDiff / 1000;
         }
 
-        this.player.seekTo(targetTime, true);
-        
-        if (state.isPlaying) {
-            this.player.playVideo();
-        } else {
-            this.player.pauseVideo();
+        console.log('Seeking to time:', targetTime, 'isPlaying:', state.isPlaying);
+
+        try {
+            this.player.seekTo(targetTime, true);
+            
+            if (state.isPlaying) {
+                this.player.playVideo();
+            } else {
+                this.player.pauseVideo();
+            }
+        } catch (error) {
+            console.error('Error syncing video state:', error);
         }
 
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
-        }, 1000);
+            console.log('Sync complete, allowing local events');
+        }, 1500);
     }
 
     updateRoomInfo() {
@@ -406,6 +435,9 @@ class YouTubeSyncApp {
                                 pauseVideo: typeof this.player.pauseVideo
                             });
                             
+                            // Start seek detection
+                            this.startSeekDetection();
+                            
                             // Load pending video if any
                             if (this.pendingVideoId) {
                                 console.log('Loading pending video:', this.pendingVideoId);
@@ -432,29 +464,67 @@ class YouTubeSyncApp {
         });
     }
 
+    startSeekDetection() {
+        if (this.seekCheckInterval) {
+            clearInterval(this.seekCheckInterval);
+        }
+        
+        this.seekCheckInterval = setInterval(() => {
+            if (!this.player || !this.playerReady || this.isUpdatingFromRemote) return;
+            
+            try {
+                const currentTime = this.player.getCurrentTime();
+                const timeDiff = Math.abs(currentTime - this.lastKnownTime);
+                
+                // If time jumped more than 2 seconds, user probably seeked
+                if (timeDiff > 2 && this.lastKnownTime > 0) {
+                    console.log('Seek detected:', this.lastKnownTime, '->', currentTime);
+                    this.socket.emit('video-seek', { currentTime });
+                }
+                
+                this.lastKnownTime = currentTime;
+            } catch (error) {
+                console.error('Error in seek detection:', error);
+            }
+        }, 1000);
+    }
+
     onYouTubeIframeAPIReady() {
         this.initializePlayer();
     }
 
     onPlayerStateChange(event) {
-        if (this.isUpdatingFromRemote) return;
+        if (this.isUpdatingFromRemote) {
+            console.log('Ignoring state change - updating from remote');
+            return;
+        }
 
         const currentTime = this.player.getCurrentTime();
+        console.log('Player state changed:', event.data, 'at time:', currentTime);
         
         switch (event.data) {
             case YT.PlayerState.PLAYING:
+                console.log('Emitting video-play event');
                 this.socket.emit('video-play', { currentTime });
                 break;
             case YT.PlayerState.PAUSED:
+                console.log('Emitting video-pause event');
                 this.socket.emit('video-pause', { currentTime });
                 break;
             case YT.PlayerState.ENDED:
+                console.log('Video ended');
                 // Auto-play next video if queue has items and user is host
                 if (this.isHost) {
                     setTimeout(() => {
                         this.socket.emit('play-next');
                     }, 1000);
                 }
+                break;
+            case YT.PlayerState.BUFFERING:
+                console.log('Video buffering');
+                break;
+            case YT.PlayerState.CUED:
+                console.log('Video cued');
                 break;
         }
     }
