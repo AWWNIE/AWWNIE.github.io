@@ -1900,6 +1900,9 @@
       } else if (syncState.isSyncMaster) {
         className += ' sync-master';
         text = 'Sync Master';
+      } else {
+        className += ' in-sync';
+        text = 'In Sync';
       }
 
       indicator.className = className;
@@ -3380,6 +3383,10 @@
       // Refresh stats every 30 seconds
       setInterval(loadStats, 30000);
     });
+      } // Close socket initialization block
+      
+      checkRoom(room, name);
+    };
 
     // Helper function to update settings UI
     function updateSettingsUI() {
