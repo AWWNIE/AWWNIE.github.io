@@ -3,9 +3,11 @@ class YouTubeSyncApp {
         this.socket = io();
         this.player = null;
         this.playerReady = false;
+        this.apiReady = false;
         this.currentRoom = this.getRoomIdFromUrl();
         this.isHost = false;
         this.isUpdatingFromRemote = false;
+        this.pendingVideoId = null;
         
         this.initializeElements();
         this.setupEventListeners();
@@ -22,8 +24,8 @@ class YouTubeSyncApp {
             window.location.href = '/';
         }
         
-        // Initialize YouTube player when API is ready
-        this.initializePlayer();
+        // Wait for YouTube API to load
+        this.waitForYouTubeAPI();
     }
 
     initializeElements() {
@@ -237,20 +239,22 @@ class YouTubeSyncApp {
     }
 
     loadYouTubeVideo(videoId) {
+        console.log('loadYouTubeVideo called with:', videoId);
+        
         if (this.player && this.playerReady && typeof this.player.loadVideoById === 'function') {
+            console.log('Player ready, loading video immediately');
             this.isUpdatingFromRemote = true;
             this.player.loadVideoById(videoId);
             this.noVideoMessage.style.display = 'none';
         } else {
-            // Player not ready, initialize and retry
-            console.log('Player not ready, initializing...');
-            this.initializePlayer().then(() => {
-                if (this.player && typeof this.player.loadVideoById === 'function') {
-                    this.isUpdatingFromRemote = true;
-                    this.player.loadVideoById(videoId);
-                    this.noVideoMessage.style.display = 'none';
-                }
-            });
+            console.log('Player not ready, storing video ID for later:', videoId);
+            this.pendingVideoId = videoId;
+            this.noVideoMessage.style.display = 'none';
+            
+            // Try to initialize player if not done yet
+            if (!this.playerReady) {
+                this.initializePlayer();
+            }
         }
     }
 
@@ -285,7 +289,9 @@ class YouTubeSyncApp {
         this.updateHostIndicator();
         
         // Initialize YouTube player when entering room
-        this.initializePlayer();
+        if (!this.playerReady) {
+            this.initializePlayer();
+        }
     }
 
     updateHostIndicator() {
@@ -297,37 +303,85 @@ class YouTubeSyncApp {
     }
 
 
-    async initializePlayer() {
-        return new Promise((resolve) => {
-            if (this.player && this.playerReady) {
-                resolve();
-                return;
-            }
-
-            // Wait for YouTube API to be loaded
-            if (!window.YT || !window.YT.Player) {
-                setTimeout(() => this.initializePlayer().then(resolve), 500);
-                return;
-            }
-
-            this.player = new YT.Player('player', {
-                height: '675',
-                width: '100%',
-                playerVars: {
-                    'playsinline': 1,
-                    'controls': 1,
-                    'rel': 0,
-                    'modestbranding': 1
-                },
-                events: {
-                    'onReady': (event) => {
-                        console.log('YouTube player ready');
-                        this.playerReady = true;
-                        resolve();
-                    },
-                    'onStateChange': (event) => this.onPlayerStateChange(event)
+    waitForYouTubeAPI() {
+        if ((window.YT && window.YT.Player) || window.youtubeAPIReady) {
+            console.log('YouTube API already loaded');
+            this.apiReady = true;
+            this.initializePlayer();
+        } else {
+            console.log('Waiting for YouTube API...');
+            // Check every 100ms for API availability
+            const checkAPI = setInterval(() => {
+                if ((window.YT && window.YT.Player) || window.youtubeAPIReady) {
+                    console.log('YouTube API loaded via polling');
+                    this.apiReady = true;
+                    clearInterval(checkAPI);
+                    this.initializePlayer();
                 }
+            }, 100);
+            
+            // Timeout after 15 seconds
+            setTimeout(() => {
+                if (!this.apiReady) {
+                    console.error('YouTube API failed to load after 15 seconds');
+                    clearInterval(checkAPI);
+                    // Try to reload the page or show an error
+                    alert('YouTube player failed to load. Please refresh the page.');
+                }
+            }, 15000);
+        }
+    }
+
+    async initializePlayer() {
+        if (this.player && this.playerReady) {
+            console.log('Player already initialized');
+            return Promise.resolve();
+        }
+
+        if (!this.apiReady || !window.YT || !window.YT.Player) {
+            console.log('API not ready, waiting...');
+            return new Promise((resolve) => {
+                setTimeout(() => this.initializePlayer().then(resolve), 500);
             });
+        }
+
+        return new Promise((resolve) => {
+            console.log('Creating YouTube player...');
+            try {
+                this.player = new YT.Player('player', {
+                    height: '675',
+                    width: '100%',
+                    playerVars: {
+                        'playsinline': 1,
+                        'controls': 1,
+                        'rel': 0,
+                        'modestbranding': 1
+                    },
+                    events: {
+                        'onReady': (event) => {
+                            console.log('YouTube player ready');
+                            this.playerReady = true;
+                            
+                            // Load pending video if any
+                            if (this.pendingVideoId) {
+                                console.log('Loading pending video:', this.pendingVideoId);
+                                this.player.loadVideoById(this.pendingVideoId);
+                                this.pendingVideoId = null;
+                                this.noVideoMessage.style.display = 'none';
+                            }
+                            
+                            resolve();
+                        },
+                        'onStateChange': (event) => this.onPlayerStateChange(event),
+                        'onError': (event) => {
+                            console.error('YouTube player error:', event.data);
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error creating YouTube player:', error);
+                setTimeout(() => this.initializePlayer().then(resolve), 1000);
+            }
         });
     }
 
@@ -362,12 +416,16 @@ class YouTubeSyncApp {
 let app;
 
 function onYouTubeIframeAPIReady() {
-    console.log('YouTube API Ready');
-    if (app) {
-        app.onYouTubeIframeAPIReady();
+    console.log('Global YouTube API Ready callback');
+    window.youtubeAPIReady = true;
+    if (window.app) {
+        console.log('Calling app.waitForYouTubeAPI()');
+        window.app.apiReady = true;
+        window.app.initializePlayer();
     }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
-    app = new YouTubeSyncApp();
+    console.log('DOM loaded, creating app');
+    window.app = new YouTubeSyncApp();
 });
