@@ -119,7 +119,11 @@ io.on('connection', (socket) => {
     };
 
     console.log(`Video play event from ${socket.id} in room ${socket.roomId}:`, room.videoState);
-    socket.to(socket.roomId).emit('video-play', room.videoState);
+    // Send to ALL users in room (including sender) with sender ID to prevent loops
+    io.to(socket.roomId).emit('video-play', { 
+      ...room.videoState, 
+      senderId: socket.id 
+    });
   });
 
   socket.on('video-pause', (data) => {
@@ -133,7 +137,11 @@ io.on('connection', (socket) => {
     };
 
     console.log(`Video pause event from ${socket.id} in room ${socket.roomId}:`, room.videoState);
-    socket.to(socket.roomId).emit('video-pause', room.videoState);
+    // Send to ALL users in room (including sender) with sender ID to prevent loops
+    io.to(socket.roomId).emit('video-pause', { 
+      ...room.videoState, 
+      senderId: socket.id 
+    });
   });
 
   socket.on('video-seek', (data) => {
@@ -147,7 +155,11 @@ io.on('connection', (socket) => {
     };
 
     console.log(`Video seek event from ${socket.id} in room ${socket.roomId}:`, room.videoState);
-    socket.to(socket.roomId).emit('video-seek', room.videoState);
+    // Send to ALL users in room (including sender) with sender ID to prevent loops
+    io.to(socket.roomId).emit('video-seek', { 
+      ...room.videoState, 
+      senderId: socket.id 
+    });
   });
 
   socket.on('add-to-queue', (data) => {

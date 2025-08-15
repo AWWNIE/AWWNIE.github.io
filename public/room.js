@@ -165,18 +165,39 @@ class YouTubeSyncApp {
 
         this.socket.on('video-play', (data) => {
             console.log('Received video-play event:', data);
+            
+            // Ignore our own events to prevent loops
+            if (data.senderId === this.socket.id) {
+                console.log('Ignoring own video-play event');
+                return;
+            }
+            
             this.handleRemotePlay(data);
             this.notifyInfo('Video Playing', 'Video playback started');
         });
 
         this.socket.on('video-pause', (data) => {
             console.log('Received video-pause event:', data);
+            
+            // Ignore our own events to prevent loops
+            if (data.senderId === this.socket.id) {
+                console.log('Ignoring own video-pause event');
+                return;
+            }
+            
             this.handleRemotePause(data);
             this.notifyInfo('Video Paused', 'Video playback paused');
         });
 
         this.socket.on('video-seek', (data) => {
             console.log('Received video-seek event:', data);
+            
+            // Ignore our own events to prevent loops
+            if (data.senderId === this.socket.id) {
+                console.log('Ignoring own video-seek event');
+                return;
+            }
+            
             this.handleRemoteSeek(data);
             const time = Math.floor(data.currentTime);
             this.notifyInfo('Video Seeking', `Synced to ${this.formatTime(time)}`);
@@ -575,8 +596,8 @@ class YouTubeSyncApp {
             const playerState = this.player.getPlayerState();
             console.log('Auto-play check - player state:', playerState);
             
-            // Only auto-play if the video is cued/paused and we're the host
-            if (this.isHost && (playerState === YT.PlayerState.CUED || playerState === YT.PlayerState.PAUSED)) {
+            // Auto-play if the video is cued/paused (any user can initiate)
+            if (playerState === YT.PlayerState.CUED || playerState === YT.PlayerState.PAUSED) {
                 console.log('Auto-playing new video');
                 this.player.playVideo();
                 
@@ -784,25 +805,21 @@ class YouTubeSyncApp {
                         this.player.playVideo();
                         
                         // Emit play event to sync with other users
-                        if (this.isHost) {
-                            setTimeout(() => {
-                                const currentTime = this.player.getCurrentTime();
-                                this.socket.emit('video-play', { currentTime });
-                            }, 500);
-                        }
+                        setTimeout(() => {
+                            const currentTime = this.player.getCurrentTime();
+                            this.socket.emit('video-play', { currentTime });
+                        }, 500);
                     } catch (error) {
                         console.error('Error auto-playing after live sync:', error);
                     }
                 }, 1000);
             }
             
-            // Emit the live sync to other users in the room
-            if (this.isHost) {
-                setTimeout(() => {
-                    const currentTime = this.player.getCurrentTime();
-                    this.socket.emit('video-seek', { currentTime });
-                }, 500);
-            }
+            // Emit the live sync to other users in the room (anyone can initiate live sync)
+            setTimeout(() => {
+                const currentTime = this.player.getCurrentTime();
+                this.socket.emit('video-seek', { currentTime });
+            }, 500);
         } catch (error) {
             console.error('Error syncing to live time:', error);
         }
