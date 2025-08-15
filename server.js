@@ -93,15 +93,17 @@ io.on('connection', (socket) => {
     if (!room) return;
 
     room.currentVideo = data.videoId;
+    // Reset video state for new video - don't send old state
     room.videoState = {
       isPlaying: false,
       currentTime: 0,
       lastUpdate: Date.now()
     };
 
+    // Send video loaded event WITHOUT video state to prevent override
     io.to(socket.roomId).emit('video-loaded', { 
-      videoId: data.videoId,
-      videoState: room.videoState
+      videoId: data.videoId
+      // Removed videoState to prevent stale state override
     });
     console.log(`Video loaded in room ${socket.roomId}: ${data.videoId}`);
   });
@@ -220,15 +222,17 @@ io.on('connection', (socket) => {
 
     const nextVideo = room.queue.shift();
     room.currentVideo = nextVideo.videoId;
+    // Reset video state for new video from queue
     room.videoState = {
       isPlaying: false,
       currentTime: 0,
       lastUpdate: Date.now()
     };
 
+    // Send video loaded event WITHOUT forcing old state
     io.to(socket.roomId).emit('video-loaded', { 
-      videoId: nextVideo.videoId,
-      videoState: room.videoState
+      videoId: nextVideo.videoId
+      // Removed videoState to let video play naturally
     });
     io.to(socket.roomId).emit('queue-updated', { queue: room.queue });
     console.log(`Playing next video in room ${socket.roomId}: ${nextVideo.videoId}`);

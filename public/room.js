@@ -129,12 +129,15 @@ class YouTubeSyncApp {
             
             if (data.currentVideo) {
                 this.loadYouTubeVideo(data.currentVideo);
-                this.notifyInfo('Video Loaded', 'Syncing with current video');
-                if (data.videoState) {
-                    // Delay sync to ensure video is loaded
+                this.notifyInfo('Video Loaded', 'Loading current room video');
+                
+                // Only sync state if video is actually playing
+                if (data.videoState && data.videoState.isPlaying) {
                     setTimeout(() => {
                         this.syncVideoState(data.videoState);
-                    }, 2000);
+                    }, 3000);
+                } else {
+                    this.notifyInfo('Video Ready', 'Video loaded - waiting for host to start playback');
                 }
             }
             
@@ -156,12 +159,8 @@ class YouTubeSyncApp {
             this.hideGoLiveButton(); // Hide until we detect if it's live
             this.notifyInfo('Video Changed', 'A new video has been loaded');
             
-            // Sync video state if provided
-            if (data.videoState) {
-                setTimeout(() => {
-                    this.syncVideoState(data.videoState);
-                }, 2000);
-            }
+            // Don't sync video state for fresh video loads - let them play naturally
+            // Video state sync will happen through play/pause/seek events instead
         });
 
         this.socket.on('video-play', (data) => {
