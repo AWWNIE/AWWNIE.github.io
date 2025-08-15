@@ -27,14 +27,15 @@ body {
 }
 
 /* Home Screen */
-#home-screen {
+#app {
     display: flex;
     align-items: center;
     justify-content: center;
     text-align: center;
+    min-height: 100vh;
 }
 
-#home-screen .container {
+.container {
     background: rgba(30, 30, 30, 0.95);
     border: 1px solid rgba(100, 70, 160, 0.3);
     border-radius: 20px;
@@ -43,7 +44,7 @@ body {
     backdrop-filter: blur(10px);
 }
 
-#home-screen h1 {
+h1 {
     font-size: 3rem;
     margin-bottom: 20px;
     background: linear-gradient(135deg, #9d7bea, #6446a0);
@@ -52,7 +53,7 @@ body {
     background-clip: text;
 }
 
-#home-screen p {
+p {
     font-size: 1.2rem;
     margin-bottom: 40px;
     color: #b0b0b0;
@@ -75,6 +76,28 @@ body {
 /* Room Screen */
 #room-screen {
     padding: 20px;
+}
+
+.invite-section {
+    margin-top: 15px;
+}
+
+.invite-section p {
+    font-size: 0.9rem;
+    margin-bottom: 10px;
+    color: #b0b0b0;
+}
+
+.invite-link {
+    display: flex;
+    gap: 10px;
+    max-width: 500px;
+}
+
+.invite-link input {
+    flex: 1;
+    font-size: 0.9rem;
+    padding: 8px 12px;
 }
 
 .room-header {

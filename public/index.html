@@ -8,55 +8,22 @@
 </head>
 <body>
     <div id="app">
-        <div id="home-screen" class="screen active">
-            <div class="container">
-                <h1>YouTube Sync Rooms</h1>
-                <p>Watch YouTube videos together in sync with friends</p>
+        <div class="container">
+            <h1>YouTube Sync Rooms</h1>
+            <p>Watch YouTube videos together in sync with friends</p>
+            
+            <div class="room-controls">
+                <button id="create-room-btn" class="btn primary">Create New Room</button>
                 
-                <div class="room-controls">
-                    <button id="create-room-btn" class="btn primary">Create New Room</button>
-                    
-                    <div class="join-room">
-                        <input type="text" id="room-id-input" placeholder="Enter Room ID" maxlength="8">
-                        <button id="join-room-btn" class="btn secondary">Join Room</button>
-                    </div>
+                <div class="join-room">
+                    <input type="text" id="room-id-input" placeholder="Enter Room ID" maxlength="8">
+                    <button id="join-room-btn" class="btn secondary">Join Room</button>
                 </div>
-            </div>
-        </div>
-
-        <div id="room-screen" class="screen">
-            <div class="room-header">
-                <div class="room-info">
-                    <h2>Room: <span id="current-room-id"></span></h2>
-                    <p>Users online: <span id="user-count">1</span></p>
-                </div>
-                <button id="leave-room-btn" class="btn danger">Leave Room</button>
-            </div>
-
-            <div class="video-section">
-                <div class="video-controls">
-                    <input type="text" id="video-url-input" placeholder="Paste YouTube URL here">
-                    <button id="load-video-btn" class="btn primary">Load Video</button>
-                </div>
-                
-                <div id="video-container">
-                    <div id="player"></div>
-                    <div id="no-video-message" class="placeholder">
-                        <h3>No video loaded</h3>
-                        <p>Paste a YouTube URL above to start watching together</p>
-                    </div>
-                </div>
-            </div>
-
-            <div id="status-bar">
-                <span id="connection-status">Connected</span>
-                <span id="host-indicator" class="hidden">You are the host</span>
             </div>
         </div>
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
-    <script src="https://www.youtube.com/iframe_api"></script>
-    <script src="app.js"></script>
+    <script src="home.js"></script>
 </body>
 </html>
