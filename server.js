@@ -11,11 +11,13 @@ const io = socketIo(server, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  // Configure timeouts for long live streams
-  pingTimeout: 120000, // 2 minutes instead of default 5 seconds
-  pingInterval: 30000,  // 30 seconds instead of default 25 seconds
+  // Optimized settings for stability
+  pingTimeout: 60000,   // 1 minute - more reasonable
+  pingInterval: 25000,  // 25 seconds - default works well
   transports: ['websocket', 'polling'],
-  allowEIO3: true
+  allowEIO3: true,
+  serveClient: true,
+  cookie: false
 });
 
 const PORT = process.env.PORT || 3000;
@@ -148,10 +150,26 @@ io.on('connection', (socket) => {
 
   socket.on('add-to-queue', (data) => {
     const room = rooms.get(socket.roomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`Add to queue failed: Room ${socket.roomId} not found for ${socket.id}`);
+      socket.emit('error', 'Room not found');
+      return;
+    }
+
+    if (!room.users.has(socket.id)) {
+      console.log(`Add to queue failed: User ${socket.id} not in room ${socket.roomId}`);
+      socket.emit('error', 'Not a member of this room');
+      return;
+    }
+
+    if (!data.videoId || !data.title) {
+      console.log(`Add to queue failed: Invalid data from ${socket.id}`);
+      socket.emit('error', 'Invalid video data');
+      return;
+    }
 
     const queueItem = {
-      id: Date.now().toString(),
+      id: Date.now().toString() + '_' + socket.id.slice(-4), // More unique ID
       videoId: data.videoId,
       title: data.title,
       addedBy: socket.id,
@@ -160,16 +178,40 @@ io.on('connection', (socket) => {
 
     room.queue.push(queueItem);
     io.to(socket.roomId).emit('queue-updated', { queue: room.queue });
-    console.log(`Video added to queue in room ${socket.roomId}: ${data.videoId}`);
+    console.log(`Video added to queue in room ${socket.roomId}: ${data.videoId} by ${socket.id}`);
   });
 
   socket.on('remove-from-queue', (data) => {
     const room = rooms.get(socket.roomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`Remove from queue failed: Room ${socket.roomId} not found for ${socket.id}`);
+      socket.emit('error', 'Room not found');
+      return;
+    }
 
+    if (!room.users.has(socket.id)) {
+      console.log(`Remove from queue failed: User ${socket.id} not in room ${socket.roomId}`);
+      socket.emit('error', 'Not a member of this room');
+      return;
+    }
+
+    if (!data.itemId) {
+      console.log(`Remove from queue failed: No item ID from ${socket.id}`);
+      socket.emit('error', 'Invalid item ID');
+      return;
+    }
+
+    const originalLength = room.queue.length;
     room.queue = room.queue.filter(item => item.id !== data.itemId);
+    
+    if (room.queue.length === originalLength) {
+      console.log(`Remove from queue failed: Item ${data.itemId} not found in room ${socket.roomId}`);
+      socket.emit('error', 'Video not found in queue');
+      return;
+    }
+
     io.to(socket.roomId).emit('queue-updated', { queue: room.queue });
-    console.log(`Video removed from queue in room ${socket.roomId}: ${data.itemId}`);
+    console.log(`Video removed from queue in room ${socket.roomId}: ${data.itemId} by ${socket.id}`);
   });
 
   socket.on('play-next', () => {

@@ -1,14 +1,15 @@
 class YouTubeSyncApp {
     constructor() {
         this.socket = io({
-            // Enhanced reconnection for long live streams
+            // Stable reconnection settings
             reconnection: true,
-            reconnectionDelay: 1000,
+            reconnectionDelay: 2000,
             reconnectionDelayMax: 5000,
-            maxReconnectionAttempts: 10,
+            maxReconnectionAttempts: 5,
             timeout: 20000,
             forceNew: false,
-            transports: ['websocket', 'polling']
+            transports: ['websocket', 'polling'],
+            autoConnect: true
         });
         this.player = null;
         this.playerReady = false;
@@ -200,8 +201,19 @@ class YouTubeSyncApp {
         });
 
         this.socket.on('queue-updated', (data) => {
-            this.updateQueue(data.queue);
-            this.notifyInfo('Queue Updated', `${data.queue.length} video(s) in queue`);
+            const previousCount = this.queueCount ? parseInt(this.queueCount.textContent) : 0;
+            const newCount = data.queue ? data.queue.length : 0;
+            
+            this.updateQueue(data.queue || []);
+            
+            // Provide specific feedback based on queue changes
+            if (newCount > previousCount) {
+                this.notifySuccess('Video Added', `Queue now has ${newCount} video(s)`);
+            } else if (newCount < previousCount) {
+                this.notifyInfo('Video Removed', `Queue now has ${newCount} video(s)`);
+            } else if (newCount === 0) {
+                this.notifyInfo('Queue Empty', 'All videos have been removed from queue');
+            }
         });
     }
 
@@ -411,14 +423,29 @@ class YouTubeSyncApp {
         const url = this.videoUrlInput.value.trim();
         const videoId = this.extractVideoId(url);
         
-        if (videoId) {
+        if (!videoId) {
+            this.notifyError('Invalid URL', 'Please enter a valid YouTube URL');
+            return;
+        }
+
+        // Check if we're in a room
+        if (!this.currentRoom) {
+            this.notifyError('No Room', 'You must be in a room to add videos to queue');
+            return;
+        }
+        
+        try {
             this.notifyInfo('Adding to Queue', 'Fetching video information...');
             const title = await this.getVideoTitle(videoId);
+            
+            // Send to server and wait for confirmation via queue-updated event
             this.socket.emit('add-to-queue', { videoId, title });
             this.videoUrlInput.value = '';
-            this.notifySuccess('Added to Queue', `"${title}" added to queue`);
-        } else {
-            this.notifyError('Invalid URL', 'Please enter a valid YouTube URL');
+            // Note: Success notification will come from queue-updated event
+            
+        } catch (error) {
+            console.error('Error adding to queue:', error);
+            this.notifyError('Queue Error', 'Failed to add video to queue');
         }
     }
 
@@ -428,8 +455,18 @@ class YouTubeSyncApp {
     }
 
     removeFromQueue(itemId) {
+        if (!this.currentRoom) {
+            this.notifyError('No Room', 'You must be in a room to remove videos');
+            return;
+        }
+        
+        if (!itemId) {
+            this.notifyError('Invalid Item', 'Cannot remove invalid queue item');
+            return;
+        }
+        
         this.socket.emit('remove-from-queue', { itemId });
-        this.notifyInfo('Queue Updated', 'Video removed from queue');
+        // Note: Success notification will come from queue-updated event
     }
 
     async getVideoTitle(videoId) {
