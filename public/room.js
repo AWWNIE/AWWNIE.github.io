@@ -172,7 +172,22 @@ class YouTubeSyncApp {
                 return;
             }
             
+            const beforeState = this.player ? this.player.getPlayerState() : 'no player';
+            console.log('Processing remote play event - current state before:', beforeState);
+            
             this.handleRemotePlay(data);
+            
+            // Check final state after a delay
+            setTimeout(() => {
+                const afterState = this.player ? this.player.getPlayerState() : 'no player';
+                console.log('Play sync complete - final state:', afterState);
+                if (afterState === YT.PlayerState.PLAYING) {
+                    console.log('✅ Play sync successful');
+                } else {
+                    console.log('❌ Play sync may have failed - state:', afterState);
+                }
+            }, 500);
+            
             this.notifyInfo('Video Playing', 'Video playback started');
         });
 
@@ -185,8 +200,22 @@ class YouTubeSyncApp {
                 return;
             }
             
-            console.log('Processing remote pause event');
+            const beforeState = this.player ? this.player.getPlayerState() : 'no player';
+            console.log('Processing remote pause event - current state before:', beforeState);
+            
             this.handleRemotePause(data);
+            
+            // Check final state after a delay
+            setTimeout(() => {
+                const afterState = this.player ? this.player.getPlayerState() : 'no player';
+                console.log('Pause sync complete - final state:', afterState);
+                if (afterState === YT.PlayerState.PAUSED) {
+                    console.log('✅ Pause sync successful');
+                } else {
+                    console.log('❌ Pause sync may have failed - state:', afterState);
+                }
+            }, 500);
+            
             this.notifyInfo('Video Paused', 'Video playback paused');
         });
 
@@ -422,7 +451,7 @@ class YouTubeSyncApp {
         // Clear the remote update flag
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
-        }, 1500);
+        }, 500);
     }
 
     leaveRoom() {
@@ -886,12 +915,25 @@ class YouTubeSyncApp {
             
             this.player.seekTo(targetTime, true);
             
-            setTimeout(() => {
-                if (this.player.getPlayerState() !== YT.PlayerState.PLAYING) {
+            // Ensure video plays with retry logic
+            const ensurePlay = (attempt = 1) => {
+                const currentState = this.player.getPlayerState();
+                console.log(`Play attempt ${attempt} - player state:`, currentState);
+                
+                if (currentState !== YT.PlayerState.PLAYING) {
+                    console.log('Video not playing - executing play');
                     this.player.playVideo();
-                    console.log('Started playback');
+                    
+                    // Verify play worked after a short delay
+                    if (attempt < 3) {
+                        setTimeout(() => ensurePlay(attempt + 1), 200);
+                    }
+                } else {
+                    console.log('Video successfully playing');
                 }
-            }, 200);
+            };
+            
+            setTimeout(() => ensurePlay(), 100);
             
         } catch (error) {
             console.error('Error handling remote play:', error);
@@ -900,7 +942,7 @@ class YouTubeSyncApp {
         // Unblock after delay
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
-        }, 1000);
+        }, 300);
     }
 
     handleRemotePause(data) {
@@ -909,20 +951,42 @@ class YouTubeSyncApp {
             return;
         }
 
-        console.log('Handling remote pause:', data);
+        console.log('Handling remote pause at time:', data.currentTime);
         
         // Temporarily block local events
         this.isUpdatingFromRemote = true;
         
         try {
+            // Seek to the pause position
             this.player.seekTo(data.currentTime, true);
+            console.log('Seeked to pause position:', data.currentTime);
             
-            setTimeout(() => {
-                if (this.player.getPlayerState() === YT.PlayerState.PLAYING) {
+            // Ensure video is paused with retry logic
+            const ensurePause = (attempt = 1) => {
+                const currentState = this.player.getPlayerState();
+                console.log(`Pause attempt ${attempt} - player state:`, currentState);
+                
+                if (currentState === YT.PlayerState.PLAYING) {
+                    console.log('Video still playing - executing pause');
                     this.player.pauseVideo();
-                    console.log('Paused playback');
+                    
+                    // Verify pause worked after a short delay
+                    if (attempt < 3) {
+                        setTimeout(() => ensurePause(attempt + 1), 200);
+                    }
+                } else if (currentState === YT.PlayerState.PAUSED) {
+                    console.log('Video successfully paused');
+                } else if (currentState === YT.PlayerState.BUFFERING) {
+                    console.log('Video buffering - will pause when ready');
+                    // Force pause even during buffering
+                    this.player.pauseVideo();
+                } else {
+                    console.log('Video in state:', currentState, '- forcing pause anyway');
+                    this.player.pauseVideo();
                 }
-            }, 200);
+            };
+            
+            setTimeout(() => ensurePause(), 100);
             
         } catch (error) {
             console.error('Error handling remote pause:', error);
@@ -931,7 +995,8 @@ class YouTubeSyncApp {
         // Unblock after delay
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
-        }, 1000);
+            console.log('Cleared isUpdatingFromRemote after pause sync');
+        }, 300);
     }
 
     handleRemoteSeek(data) {
@@ -956,7 +1021,7 @@ class YouTubeSyncApp {
         // Unblock after delay
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
-        }, 1000);
+        }, 300);
     }
 
     updateRoomInfo() {
@@ -1177,6 +1242,8 @@ class YouTubeSyncApp {
         const currentTime = this.player ? this.player.getCurrentTime() : 0;
         console.log('Player state changed:', event.data, 'at time:', currentTime, 'isUpdatingFromRemote:', this.isUpdatingFromRemote);
         
+        // Only ignore state changes if we're actively processing a remote sync
+        // Don't ignore normal user interactions after the sync delay has passed
         if (this.isUpdatingFromRemote) {
             console.log('Ignoring state change - currently syncing from remote');
             return;
