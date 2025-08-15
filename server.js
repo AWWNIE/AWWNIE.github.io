@@ -111,7 +111,7 @@ async function searchAnimeFromSources(query) {
   return results.slice(0, 12); // Limit to 12 results
 }
 
-// Generate anime results with proper embed URLs
+// Generate anime results with proper embed URLs - Updated sources
 function generate9AnimeResults(query) {
   const animeDatabase = [
     { title: "Attack on Titan Final Season", slug: "attack-on-titan-final-season", episodes: 24, year: 2023, id: "1735" },
@@ -138,9 +138,9 @@ function generate9AnimeResults(query) {
     genre: "Action, Adventure",
     year: anime.year,
     source: "9anime",
-    embedUrl: `https://9anime.gs/embed/${anime.id}`,
-    directUrl: `https://9anime.gs/watch/${anime.slug}`,
-    streamUrl: `https://vidstream.pro/embed/${anime.id}`,
+    embedUrl: `https://9animetv.to/watch/${anime.slug}`,
+    directUrl: `https://9animetv.to/watch/${anime.slug}`,
+    streamUrl: `https://vidplay.site/e/${anime.id}`,
     url: `9anime://${anime.slug}#ep=1`
   }));
 }
@@ -167,9 +167,9 @@ function generateGogoAnimeResults(query) {
     genre: "Action, Adventure",
     year: anime.year,
     source: "gogoanime",
-    embedUrl: `https://gogoanime3.co/embed/${anime.slug}-episode-1`,
-    directUrl: `https://gogoanime3.co/${anime.slug}`,
-    streamUrl: `https://streamtape.com/e/${anime.slug}-1`,
+    embedUrl: `https://anitaku.so/watch/${anime.slug}`,
+    directUrl: `https://anitaku.so/${anime.slug}`,
+    streamUrl: `https://mp4upload.com/embed/${anime.slug}-1`,
     url: `gogoanime://${anime.slug}#ep=1`
   }));
 }
@@ -193,11 +193,11 @@ function generateZoroResults(query) {
     thumbnail: `https://img.zoroto.to/xxrz/250x400/100/17/82/1782c72e1f98bd8739de21ad8e8a7daf/1782c72e1f98bd8739de21ad8e8a7daf.jpg`,
     genre: "Action, Adventure",
     year: anime.year,
-    source: "zoro",
-    embedUrl: `https://hianime.to/embed/${anime.id}`,
+    source: "hianime",
+    embedUrl: `https://hianime.to/watch/${anime.slug}`,
     directUrl: `https://hianime.to/watch/${anime.slug}`,
     streamUrl: `https://megacloud.tv/embed-2/e-1/${anime.id}`,
-    url: `zoro://${anime.slug}#ep=1`
+    url: `hianime://${anime.slug}#ep=1`
   }));
 }
 
@@ -328,20 +328,25 @@ function parseVideoUrl(url) {
     };
   }
 
-  // Direct anime site URLs
-  match = url.match(/(?:9anime|gogoanime|zoro|hianime)\.[\w]+\/(?:watch|embed)\/([^#?]+)(?:[#?]ep[=:]?(\d+))?/);
+  // Direct anime site URLs - Updated patterns
+  match = url.match(/(?:9animetv|anitaku|hianime)\.[\w]+\/(?:watch|embed)\/([^#?]+)(?:[#?]ep[=:]?(\d+))?/);
   if (match) {
     const animeSlug = match[1];
     const episode = match[2] || '1';
-    const domain = url.match(/(9anime|gogoanime|zoro|hianime)/)[1];
+    const domain = url.match(/(9animetv|anitaku|hianime)/)[1];
+    
+    // Map domains to sources
+    let source = domain;
+    if (domain === '9animetv') source = '9anime';
+    if (domain === 'anitaku') source = 'gogoanime';
     
     return {
       platform: 'anime',
-      source: domain,
+      source: source,
       id: animeSlug,
       episode: episode,
       originalUrl: url,
-      embedUrl: generateEmbedUrl(domain, animeSlug, episode),
+      embedUrl: generateEmbedUrl(source, animeSlug, episode),
       directUrl: url
     };
   }
@@ -364,6 +369,18 @@ function parseVideoUrl(url) {
     return { platform: 'twitch', id: match[1], originalUrl: url };
   }
   
+  // Dailymotion
+  match = url.match(/(?:dailymotion\.com\/video\/)([^_\n?]+)/);
+  if (match) {
+    return { platform: 'dailymotion', id: match[1], originalUrl: url };
+  }
+  
+  // Rumble
+  match = url.match(/(?:rumble\.com\/embed\/)?([a-zA-Z0-9]+)/);
+  if (match) {
+    return { platform: 'rumble', id: match[1], originalUrl: url };
+  }
+  
   // Direct video ID (assume YouTube)
   if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
     return { platform: 'youtube', id: url, originalUrl: `https://youtube.com/watch?v=${url}` };
@@ -372,16 +389,16 @@ function parseVideoUrl(url) {
   return null;
 }
 
-// Generate embed URL based on source
+// Generate embed URL based on source - Updated URLs
 function generateEmbedUrl(source, animeSlug, episode) {
   switch(source) {
     case '9anime':
-      return `https://9anime.gs/embed/${animeSlug}-${episode}`;
+      return `https://9animetv.to/watch/${animeSlug}`;
     case 'gogoanime':
-      return `https://gogoanime3.co/embed/${animeSlug}-episode-${episode}`;
+      return `https://anitaku.so/watch/${animeSlug}`;
     case 'zoro':
     case 'hianime':
-      return `https://hianime.to/embed/${animeSlug}-${episode}`;
+      return `https://hianime.to/watch/${animeSlug}`;
     default:
       return null;
   }
@@ -1029,23 +1046,48 @@ io.on("connection", (socket) => {
   socket.on("addVideo", ({ roomId, videoUrl }) => {
     if (!rooms[roomId]) {
       console.log(`Room ${roomId} doesn't exist for addVideo`);
+      socket.emit("videoError", { message: "Room not found. Please rejoin the room." });
+      return;
+    }
+    
+    if (!videoUrl || typeof videoUrl !== 'string' || videoUrl.trim() === '') {
+      socket.emit("videoError", { message: "Please provide a valid video URL." });
       return;
     }
     
     updateRoomActivity(roomId);
     console.log(`Adding video ${videoUrl} to room ${roomId}`);
     
-    const videoData = parseVideoUrl(videoUrl);
+    const videoData = parseVideoUrl(videoUrl.trim());
     if (!videoData) {
-      socket.emit("videoError", { message: "Unsupported video URL format. Supports YouTube, Vimeo, Twitch, and Anime URLs." });
+      socket.emit("videoError", { message: "Unsupported video URL format. Supports YouTube, Vimeo, Twitch, Dailymotion, Rumble, and Anime URLs." });
       return;
     }
     
     if (videoData.platform === 'youtube') {
+      if (!YOUTUBE_API_KEY) {
+        // Fallback: Use basic info when API key is not available
+        const basicVideoInfo = {
+          title: `YouTube Video (${videoData.id})`,
+          channelTitle: "YouTube",
+          platform: "youtube",
+          thumbnail: `https://img.youtube.com/vi/${videoData.id}/maxresdefault.jpg`
+        };
+        processVideoAdd(roomId, videoData, basicVideoInfo, socket);
+        return;
+      }
+      
       fetchVideoInfo(videoData.id, (error, videoInfo) => {
         if (error) {
           console.error(`Error fetching video info for ${videoData.id}:`, error);
-          socket.emit("videoError", { message: "Could not fetch video information" });
+          // Fallback to basic info on error
+          const basicVideoInfo = {
+            title: `YouTube Video (${videoData.id})`,
+            channelTitle: "YouTube",
+            platform: "youtube",
+            thumbnail: `https://img.youtube.com/vi/${videoData.id}/maxresdefault.jpg`
+          };
+          processVideoAdd(roomId, videoData, basicVideoInfo, socket);
           return;
         }
         
