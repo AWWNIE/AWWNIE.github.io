@@ -277,8 +277,24 @@ async function getPopularAnime() {
 
 // Enhanced video URL parsing with anime sources
 function parseVideoUrl(url) {
+  // Animekai custom URLs
+  let match = url.match(/animekai:\/\/([^#]+)(?:#ep=(\d+))?/);
+  if (match) {
+    const animeSlug = match[1];
+    const episode = match[2] || '1';
+    return {
+      platform: 'anime',
+      source: 'animekai',
+      id: animeSlug,
+      episode: episode,
+      originalUrl: url,
+      embedUrl: `https://animekai.ac/watch/${animeSlug}#ep=${episode}`,
+      directUrl: `https://animekai.ac/watch/${animeSlug}#ep=${episode}`
+    };
+  }
+
   // 9anime URLs
-  let match = url.match(/9anime:\/\/([^#]+)(?:#ep=(\d+))?/);
+  match = url.match(/9anime:\/\/([^#]+)(?:#ep=(\d+))?/);
   if (match) {
     const animeSlug = match[1];
     const episode = match[2] || '1';
@@ -328,6 +344,23 @@ function parseVideoUrl(url) {
     };
   }
 
+  // Animekai.ac URLs
+  match = url.match(/animekai\.ac\/watch\/([^#?]+)(?:[#?]ep[=:]?(\d+))?/);
+  if (match) {
+    const animeSlug = match[1];
+    const episode = match[2] || '1';
+    
+    return {
+      platform: 'anime',
+      source: 'animekai',
+      id: animeSlug,
+      episode: episode,
+      originalUrl: url,
+      embedUrl: url, // Use the exact URL provided
+      directUrl: url
+    };
+  }
+
   // Direct anime site URLs - Updated patterns
   match = url.match(/(?:9animetv|anitaku|hianime)\.[\w]+\/(?:watch|embed)\/([^#?]+)(?:[#?]ep[=:]?(\d+))?/);
   if (match) {
@@ -369,17 +402,6 @@ function parseVideoUrl(url) {
     return { platform: 'twitch', id: match[1], originalUrl: url };
   }
   
-  // Dailymotion
-  match = url.match(/(?:dailymotion\.com\/video\/)([^_\n?]+)/);
-  if (match) {
-    return { platform: 'dailymotion', id: match[1], originalUrl: url };
-  }
-  
-  // Rumble
-  match = url.match(/(?:rumble\.com\/embed\/)?([a-zA-Z0-9]+)/);
-  if (match) {
-    return { platform: 'rumble', id: match[1], originalUrl: url };
-  }
   
   // Direct video ID (assume YouTube)
   if (url.match(/^[a-zA-Z0-9_-]{11}$/)) {
@@ -392,6 +414,8 @@ function parseVideoUrl(url) {
 // Generate embed URL based on source - Updated URLs
 function generateEmbedUrl(source, animeSlug, episode) {
   switch(source) {
+    case 'animekai':
+      return `https://animekai.ac/watch/${animeSlug}#ep=${episode}`;
     case '9anime':
       return `https://9animetv.to/watch/${animeSlug}`;
     case 'gogoanime':
@@ -561,6 +585,121 @@ function updateRoomActivity(roomId) {
     rooms[roomId].lastActivity = Date.now();
   }
 }
+
+// High-Precision Sync Functions
+function getAuthoritativeTime(roomId) {
+  if (!rooms[roomId] || !rooms[roomId].masterClock.startTime) return 0;
+  
+  const clock = rooms[roomId].masterClock;
+  const now = Date.now();
+  
+  if (clock.pausedAt) {
+    // Video is paused - return time at pause
+    return (clock.pausedAt - clock.startTime - clock.pausedDuration + clock.videoStartOffset) / 1000 * clock.playbackRate;
+  } else {
+    // Video is playing - calculate current time
+    return (now - clock.startTime - clock.pausedDuration + clock.videoStartOffset) / 1000 * clock.playbackRate;
+  }
+}
+
+function startVideo(roomId) {
+  if (!rooms[roomId]) return;
+  
+  const now = Date.now();
+  const clock = rooms[roomId].masterClock;
+  
+  if (clock.pausedAt) {
+    // Resuming from pause
+    clock.pausedDuration += (now - clock.pausedAt);
+    clock.pausedAt = null;
+  } else {
+    // Starting fresh
+    clock.startTime = now;
+    clock.pausedDuration = 0;
+    clock.videoStartOffset = 0;
+  }
+  
+  clock.lastUpdate = now;
+  rooms[roomId].isPaused = false;
+  
+  broadcastSyncUpdate(roomId);
+}
+
+function pauseVideo(roomId) {
+  if (!rooms[roomId]) return;
+  
+  const now = Date.now();
+  const clock = rooms[roomId].masterClock;
+  
+  clock.pausedAt = now;
+  clock.lastUpdate = now;
+  rooms[roomId].isPaused = true;
+  rooms[roomId].currentTime = getAuthoritativeTime(roomId);
+  
+  broadcastSyncUpdate(roomId);
+}
+
+function seekVideo(roomId, targetTime) {
+  if (!rooms[roomId]) return;
+  
+  const now = Date.now();
+  const clock = rooms[roomId].masterClock;
+  
+  // Adjust video start offset to achieve target time
+  clock.videoStartOffset = targetTime * 1000 / clock.playbackRate;
+  clock.startTime = now;
+  clock.pausedDuration = 0;
+  
+  if (clock.pausedAt) {
+    clock.pausedAt = now;
+  }
+  
+  clock.lastUpdate = now;
+  rooms[roomId].currentTime = targetTime;
+  
+  broadcastSyncUpdate(roomId);
+}
+
+function broadcastSyncUpdate(roomId) {
+  if (!rooms[roomId]) return;
+  
+  const authTime = getAuthoritativeTime(roomId);
+  const now = Date.now();
+  
+  rooms[roomId].currentTime = authTime;
+  
+  const syncData = {
+    serverTime: now,
+    currentTime: authTime,
+    isPaused: rooms[roomId].isPaused,
+    playbackRate: rooms[roomId].masterClock.playbackRate,
+    timestamp: now,
+    roomId: roomId
+  };
+  
+  io.to(roomId).emit("precisionSync", syncData);
+}
+
+// Start precision sync broadcasting for a room
+function startPrecisionSyncBroadcast(roomId) {
+  if (!rooms[roomId]) return;
+  
+  // Clear any existing interval
+  if (rooms[roomId].syncInterval) {
+    clearInterval(rooms[roomId].syncInterval);
+  }
+  
+  // Broadcast sync updates every 500ms for high precision
+  rooms[roomId].syncInterval = setInterval(() => {
+    if (rooms[roomId] && rooms[roomId].currentVideo && Object.keys(rooms[roomId].users).length > 0) {
+      broadcastSyncUpdate(roomId);
+    } else {
+      clearInterval(rooms[roomId].syncInterval);
+      rooms[roomId].syncInterval = null;
+    }
+  }, 500);
+}
+
 
 // Function to update admin status - longest staying user becomes admin
 function updateRoomAdmin(roomId) {
@@ -895,6 +1034,20 @@ io.on("connection", (socket) => {
         lastHeartbeat: Date.now(),
         syncMaster: null
       },
+      // New High-Precision Sync System
+      masterClock: {
+        startTime: null,           // Server timestamp when video started
+        pausedAt: null,           // Server timestamp when paused
+        pausedDuration: 0,        // Total pause time
+        playbackRate: 1.0,        // Playback speed multiplier
+        lastUpdate: Date.now(),   // Last sync update
+        videoStartOffset: 0       // Offset from video start (for seeks)
+      },
+      syncQuality: {
+        clientLatencies: new Map(), // Track each client's network latency
+        syncAccuracy: new Map(),    // Track sync accuracy per client
+        lastSyncCheck: Date.now()
+      },
       animeSettings: {
         autoProgression: true,
         syncAssistance: true,
@@ -1060,7 +1213,7 @@ io.on("connection", (socket) => {
     
     const videoData = parseVideoUrl(videoUrl.trim());
     if (!videoData) {
-      socket.emit("videoError", { message: "Unsupported video URL format. Supports YouTube, Vimeo, Twitch, Dailymotion, Rumble, and Anime URLs." });
+      socket.emit("videoError", { message: "Unsupported video URL format. Supports YouTube, Vimeo, Twitch, and Anime URLs." });
       return;
     }
     
@@ -1136,8 +1289,9 @@ io.on("connection", (socket) => {
     if (!rooms[roomId].currentVideo) {
       rooms[roomId].currentVideo = videoKey;
       rooms[roomId].queue.shift();
-      rooms[roomId].currentTime = 0;
-      rooms[roomId].isPaused = false;
+      
+      // Initialize master clock for new video
+      startVideo(roomId);
       
       console.log(`Auto-starting video ${videoKey} in room ${roomId}`);
       
@@ -1478,26 +1632,41 @@ io.on("connection", (socket) => {
   socket.on("pauseVideo", ({ roomId, currentTime }) => {
     if (!rooms[roomId] || !rooms[roomId].users[socket.id]?.isSyncMaster) return;
     
-    rooms[roomId].isPaused = true;
-    rooms[roomId].currentTime = currentTime;
-    
-    socket.to(roomId).emit("syncPause", currentTime);
+    console.log(`Pause video in room ${roomId} at ${currentTime}s`);
+    pauseVideo(roomId);
   });
 
   socket.on("playVideo", ({ roomId, currentTime }) => {
     if (!rooms[roomId] || !rooms[roomId].users[socket.id]?.isSyncMaster) return;
     
-    rooms[roomId].isPaused = false;
-    rooms[roomId].currentTime = currentTime;
-    
-    socket.to(roomId).emit("syncPlay", currentTime);
+    console.log(`Play video in room ${roomId} from ${currentTime}s`);
+    startVideo(roomId);
   });
 
   socket.on("seekVideo", ({ roomId, currentTime }) => {
     if (!rooms[roomId] || !rooms[roomId].users[socket.id]?.isSyncMaster) return;
     
-    rooms[roomId].currentTime = currentTime;
-    socket.to(roomId).emit("syncSeek", currentTime);
+    console.log(`Seek video in room ${roomId} to ${currentTime}s`);
+    seekVideo(roomId, currentTime);
+  });
+
+  // Latency measurement for precision sync
+  socket.on("latencyPing", ({ roomId, timestamp }) => {
+    if (!rooms[roomId]) return;
+    
+    const now = Date.now();
+    const latency = now - timestamp;
+    
+    rooms[roomId].syncQuality.clientLatencies.set(socket.id, {
+      latency: latency,
+      timestamp: now
+    });
+    
+    socket.emit("latencyPong", { 
+      originalTimestamp: timestamp,
+      serverTimestamp: now,
+      latency: latency
+    });
   });
 
   socket.on("removeFromQueue", ({ roomId, queueIndex }) => {
