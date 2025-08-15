@@ -1,0 +1,161 @@
+const express = require('express');
+const http = require('http');
+const socketIo = require('socket.io');
+const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+
+const app = express();
+const server = http.createServer(app);
+const io = socketIo(server, {
+  cors: {
+    origin: "*",
+    methods: ["GET", "POST"]
+  }
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.use(express.static('public'));
+
+const rooms = new Map();
+
+function createRoom(roomId) {
+  return {
+    id: roomId,
+    users: new Set(),
+    currentVideo: null,
+    videoState: {
+      isPlaying: false,
+      currentTime: 0,
+      lastUpdate: Date.now()
+    },
+    host: null
+  };
+}
+
+io.on('connection', (socket) => {
+  console.log('User connected:', socket.id);
+
+  socket.on('create-room', () => {
+    const roomId = uuidv4().substring(0, 8);
+    const room = createRoom(roomId);
+    room.host = socket.id;
+    rooms.set(roomId, room);
+    
+    socket.join(roomId);
+    socket.roomId = roomId;
+    room.users.add(socket.id);
+    
+    socket.emit('room-created', { roomId, isHost: true });
+    console.log(`Room created: ${roomId} by ${socket.id}`);
+  });
+
+  socket.on('join-room', (roomId) => {
+    const room = rooms.get(roomId);
+    if (!room) {
+      socket.emit('error', 'Room not found');
+      return;
+    }
+
+    socket.join(roomId);
+    socket.roomId = roomId;
+    room.users.add(socket.id);
+
+    const isHost = room.host === socket.id;
+    socket.emit('room-joined', { 
+      roomId, 
+      isHost,
+      currentVideo: room.currentVideo,
+      videoState: room.videoState
+    });
+
+    socket.to(roomId).emit('user-joined', { userId: socket.id, userCount: room.users.size });
+    console.log(`User ${socket.id} joined room ${roomId}`);
+  });
+
+  socket.on('load-video', (data) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+
+    room.currentVideo = data.videoId;
+    room.videoState = {
+      isPlaying: false,
+      currentTime: 0,
+      lastUpdate: Date.now()
+    };
+
+    io.to(socket.roomId).emit('video-loaded', { 
+      videoId: data.videoId,
+      videoState: room.videoState
+    });
+    console.log(`Video loaded in room ${socket.roomId}: ${data.videoId}`);
+  });
+
+  socket.on('video-play', (data) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+
+    room.videoState = {
+      isPlaying: true,
+      currentTime: data.currentTime,
+      lastUpdate: Date.now()
+    };
+
+    socket.to(socket.roomId).emit('video-play', room.videoState);
+  });
+
+  socket.on('video-pause', (data) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+
+    room.videoState = {
+      isPlaying: false,
+      currentTime: data.currentTime,
+      lastUpdate: Date.now()
+    };
+
+    socket.to(socket.roomId).emit('video-pause', room.videoState);
+  });
+
+  socket.on('video-seek', (data) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+
+    room.videoState = {
+      isPlaying: room.videoState.isPlaying,
+      currentTime: data.currentTime,
+      lastUpdate: Date.now()
+    };
+
+    socket.to(socket.roomId).emit('video-seek', room.videoState);
+  });
+
+  socket.on('disconnect', () => {
+    if (socket.roomId) {
+      const room = rooms.get(socket.roomId);
+      if (room) {
+        room.users.delete(socket.id);
+        
+        if (room.host === socket.id && room.users.size > 0) {
+          room.host = Array.from(room.users)[0];
+          io.to(room.host).emit('host-changed', { isHost: true });
+        }
+        
+        if (room.users.size === 0) {
+          rooms.delete(socket.roomId);
+          console.log(`Room ${socket.roomId} deleted - no users left`);
+        } else {
+          socket.to(socket.roomId).emit('user-left', { 
+            userId: socket.id, 
+            userCount: room.users.size 
+          });
+        }
+      }
+    }
+    console.log('User disconnected:', socket.id);
+  });
+});
+
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
