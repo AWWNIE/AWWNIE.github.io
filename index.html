@@ -3041,7 +3041,10 @@
         const type = data.success ? "success" : "warning";
         showNotification(data.message, type);
       });
-    }
+      } else {
+        checkRoom(room, name);
+      }
+    };
 
     // Button Event Handlers
     document.getElementById("addVideoBtn").onclick = () => {
@@ -3383,10 +3386,6 @@
       // Refresh stats every 30 seconds
       setInterval(loadStats, 30000);
     });
-      } else {
-        checkRoom(room, name);
-      }
-    };
 
     // Helper function to update settings UI
     function updateSettingsUI() {
