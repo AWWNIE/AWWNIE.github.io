@@ -556,8 +556,39 @@ class YouTubeSyncApp {
             this.socket.emit('load-video', { videoId });
             this.videoUrlInput.value = '';
             this.notifySuccess('Video Loading', 'Video sent to all users in the room');
+            
+            // Auto-play regular videos after a delay
+            setTimeout(() => {
+                this.autoPlayNewVideo();
+            }, 3000);
         } else {
             this.notifyError('Invalid URL', 'Please enter a valid YouTube URL');
+        }
+    }
+
+    autoPlayNewVideo() {
+        try {
+            if (!this.player || !this.playerReady) {
+                console.log('Player not ready for autoplay');
+                return;
+            }
+            
+            const playerState = this.player.getPlayerState();
+            console.log('Auto-play check - player state:', playerState);
+            
+            // Only auto-play if the video is cued/paused and we're the host
+            if (this.isHost && (playerState === YT.PlayerState.CUED || playerState === YT.PlayerState.PAUSED)) {
+                console.log('Auto-playing new video');
+                this.player.playVideo();
+                
+                // Emit play event to sync with other users
+                setTimeout(() => {
+                    const currentTime = this.player.getCurrentTime();
+                    this.socket.emit('video-play', { currentTime });
+                }, 500);
+            }
+        } catch (error) {
+            console.error('Error in autoPlayNewVideo:', error);
         }
     }
 
@@ -620,7 +651,7 @@ class YouTubeSyncApp {
 
     async checkAndSyncLiveStream(videoId) {
         try {
-            // Wait for video to load before checking if it's live
+            // Wait longer for video to fully load before checking if it's live
             setTimeout(async () => {
                 if (!this.player || !this.playerReady) return;
                 
@@ -628,17 +659,19 @@ class YouTubeSyncApp {
                 const isLive = await this.isVideoLive(videoId);
                 
                 if (isLive) {
-                    console.log('Live stream detected, syncing to live time');
-                    this.syncToLiveTime();
+                    console.log('Live stream detected, waiting for video to be ready...');
                     this.showGoLiveButton();
-                    this.notifyInfo('Live Stream', 'Synced to current live time');
+                    this.notifyInfo('Live Stream', 'Live stream detected');
+                    
+                    // Wait for the video to be in a good state before syncing
+                    this.waitForVideoReadyThenSync(3000);
                 } else {
                     // For regular videos, check if we can detect live status from player
                     setTimeout(() => {
                         this.checkPlayerForLiveStream();
-                    }, 2000);
+                    }, 3000);
                 }
-            }, 1000);
+            }, 2000);
         } catch (error) {
             console.error('Error checking live stream:', error);
         }
@@ -679,36 +712,97 @@ class YouTubeSyncApp {
             // Live streams often have duration of 0 or very close to current time
             if (duration === 0 || (duration > 0 && Math.abs(duration - currentTime) < 30)) {
                 console.log('Live stream detected via player (duration:', duration, 'current:', currentTime, ')');
-                this.syncToLiveTime();
                 this.showGoLiveButton();
-                this.notifyInfo('Live Stream', 'Synced to current live time');
+                this.notifyInfo('Live Stream', 'Live stream detected');
+                
+                // Wait for the video to be in a good state before syncing
+                this.waitForVideoReadyThenSync(2000);
             }
         } catch (error) {
             console.error('Error checking player for live stream:', error);
         }
     }
 
-    syncToLiveTime() {
+    waitForVideoReadyThenSync(delay = 3000) {
+        setTimeout(() => {
+            try {
+                if (!this.player || !this.playerReady) {
+                    console.log('Player not ready for live sync, retrying...');
+                    this.waitForVideoReadyThenSync(1000);
+                    return;
+                }
+                
+                const playerState = this.player.getPlayerState();
+                const duration = this.player.getDuration();
+                
+                console.log('Checking video readiness for live sync. State:', playerState, 'Duration:', duration);
+                
+                // Wait for video to be in a good state (not unstarted, not buffering)
+                if (playerState === YT.PlayerState.UNSTARTED || 
+                    playerState === YT.PlayerState.BUFFERING ||
+                    duration === undefined) {
+                    console.log('Video not ready yet, waiting longer...');
+                    this.waitForVideoReadyThenSync(1000);
+                    return;
+                }
+                
+                console.log('Video ready, syncing to live time now');
+                this.syncToLiveTime(true); // true = autoplay after sync
+                this.notifySuccess('Live Stream', 'Synced to current live time');
+                
+            } catch (error) {
+                console.error('Error waiting for video ready:', error);
+                // Retry once more
+                setTimeout(() => this.syncToLiveTime(true), 1000);
+            }
+        }, delay);
+    }
+
+    syncToLiveTime(autoplay = false) {
         try {
             if (!this.player || !this.playerReady) return;
             
             const duration = this.player.getDuration();
+            let targetTime;
             
             if (duration === 0) {
                 // For live streams with duration 0, seek to a very high number to get live edge
                 console.log('Seeking to live edge (duration 0)');
-                this.player.seekTo(99999999, true);
+                targetTime = 99999999;
+                this.player.seekTo(targetTime, true);
             } else if (duration > 0) {
                 // For live streams with known duration, seek near the end
-                const liveTime = Math.max(0, duration - 10); // 10 seconds from live edge
-                console.log('Seeking to live time:', liveTime, 'of', duration);
-                this.player.seekTo(liveTime, true);
+                targetTime = Math.max(0, duration - 5); // 5 seconds from live edge
+                console.log('Seeking to live time:', targetTime, 'of', duration);
+                this.player.seekTo(targetTime, true);
+            }
+            
+            // Auto-play after seeking if requested
+            if (autoplay) {
+                setTimeout(() => {
+                    try {
+                        console.log('Auto-playing after live sync');
+                        this.player.playVideo();
+                        
+                        // Emit play event to sync with other users
+                        if (this.isHost) {
+                            setTimeout(() => {
+                                const currentTime = this.player.getCurrentTime();
+                                this.socket.emit('video-play', { currentTime });
+                            }, 500);
+                        }
+                    } catch (error) {
+                        console.error('Error auto-playing after live sync:', error);
+                    }
+                }, 1000);
             }
             
             // Emit the live sync to other users in the room
             if (this.isHost) {
-                const currentTime = duration === 0 ? 99999999 : Math.max(0, duration - 10);
-                this.socket.emit('video-seek', { currentTime });
+                setTimeout(() => {
+                    const currentTime = this.player.getCurrentTime();
+                    this.socket.emit('video-seek', { currentTime });
+                }, 500);
             }
         } catch (error) {
             console.error('Error syncing to live time:', error);
@@ -729,7 +823,7 @@ class YouTubeSyncApp {
 
     goLive() {
         console.log('Manual go live requested');
-        this.syncToLiveTime();
+        this.syncToLiveTime(true); // true = autoplay
         this.notifySuccess('Live Sync', 'Synced to current live time');
     }
 
