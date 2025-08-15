@@ -2,6 +2,7 @@ class YouTubeSyncApp {
     constructor() {
         this.socket = io();
         this.player = null;
+        this.playerReady = false;
         this.currentRoom = null;
         this.isHost = false;
         this.isUpdatingFromRemote = false;
@@ -11,6 +12,11 @@ class YouTubeSyncApp {
         this.setupSocketListeners();
         
         this.showHomeScreen();
+        
+        // Initialize YouTube player when API is ready
+        if (window.YT && window.YT.Player) {
+            this.onYouTubeIframeAPIReady();
+        }
     }
 
     initializeElements() {
@@ -131,7 +137,15 @@ class YouTubeSyncApp {
         const videoId = this.extractVideoId(url);
         
         if (videoId) {
-            this.socket.emit('load-video', { videoId });
+            if (!this.player || !this.playerReady) {
+                // Initialize player if not ready
+                this.onYouTubeIframeAPIReady();
+                setTimeout(() => {
+                    this.socket.emit('load-video', { videoId });
+                }, 1000);
+            } else {
+                this.socket.emit('load-video', { videoId });
+            }
             this.videoUrlInput.value = '';
         } else {
             alert('Please enter a valid YouTube URL');
@@ -187,6 +201,13 @@ class YouTubeSyncApp {
         this.roomScreen.classList.add('active');
         this.currentRoomIdSpan.textContent = this.currentRoom;
         this.updateHostIndicator();
+        
+        // Initialize YouTube player when entering room
+        if (!this.player && window.YT && window.YT.Player) {
+            setTimeout(() => {
+                this.onYouTubeIframeAPIReady();
+            }, 500);
+        }
     }
 
     updateHostIndicator() {
@@ -216,6 +237,7 @@ class YouTubeSyncApp {
         this.player = new YT.Player('player', {
             height: '450',
             width: '100%',
+            videoId: '',
             playerVars: {
                 'playsinline': 1,
                 'controls': 1,
@@ -225,6 +247,7 @@ class YouTubeSyncApp {
             events: {
                 'onReady': (event) => {
                     console.log('YouTube player ready');
+                    this.playerReady = true;
                 },
                 'onStateChange': (event) => this.onPlayerStateChange(event)
             }
@@ -250,15 +273,12 @@ class YouTubeSyncApp {
 let app;
 
 function onYouTubeIframeAPIReady() {
-    if (app && app.player) {
+    console.log('YouTube API Ready');
+    if (app) {
         app.onYouTubeIframeAPIReady();
     }
 }
 
 window.addEventListener('DOMContentLoaded', () => {
     app = new YouTubeSyncApp();
-    
-    if (window.YT && window.YT.Player) {
-        app.onYouTubeIframeAPIReady();
-    }
 });
