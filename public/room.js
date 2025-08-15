@@ -177,7 +177,7 @@ class YouTubeSyncApp {
         });
 
         this.socket.on('video-pause', (data) => {
-            console.log('Received video-pause event:', data);
+            console.log('Received video-pause event from', data.senderId, 'at time', data.currentTime, 'my ID:', this.socket.id);
             
             // Ignore our own events to prevent loops
             if (data.senderId === this.socket.id) {
@@ -185,6 +185,7 @@ class YouTubeSyncApp {
                 return;
             }
             
+            console.log('Processing remote pause event');
             this.handleRemotePause(data);
             this.notifyInfo('Video Paused', 'Video playback paused');
         });
@@ -650,6 +651,12 @@ class YouTubeSyncApp {
             this.player.loadVideoById(videoId);
             this.noVideoMessage.style.display = 'none';
             
+            // Clear the updating flag after a short delay to allow user interactions
+            setTimeout(() => {
+                this.isUpdatingFromRemote = false;
+                console.log('Cleared isUpdatingFromRemote after video load');
+            }, 2000);
+            
             // Check if this is a live stream and sync to live time
             this.checkAndSyncLiveStream(videoId);
         } else {
@@ -704,16 +711,33 @@ class YouTubeSyncApp {
             
             if (response.ok) {
                 const data = await response.json();
+                console.log('YouTube API response:', data);
+                
                 if (data.items && data.items.length > 0) {
                     const video = data.items[0];
-                    const isLive = video.snippet.liveBroadcastContent === 'live' || 
-                                  (video.liveStreamingDetails && 
-                                   video.liveStreamingDetails.actualStartTime && 
-                                   !video.liveStreamingDetails.actualEndTime);
+                    const liveBroadcastContent = video.snippet.liveBroadcastContent;
+                    const liveDetails = video.liveStreamingDetails;
                     
-                    console.log('API Live check result:', isLive, video.snippet.liveBroadcastContent);
+                    console.log('Video details:', {
+                        liveBroadcastContent,
+                        liveDetails,
+                        hasActualStart: liveDetails?.actualStartTime,
+                        hasActualEnd: liveDetails?.actualEndTime
+                    });
+                    
+                    // Check multiple conditions for live status
+                    const isLive = liveBroadcastContent === 'live' || 
+                                  (liveDetails && 
+                                   liveDetails.actualStartTime && 
+                                   !liveDetails.actualEndTime);
+                    
+                    console.log('API Live check result:', isLive, liveBroadcastContent);
                     return isLive;
+                } else {
+                    console.log('No video items found in API response');
                 }
+            } else {
+                console.log('API request failed:', response.status, response.statusText);
             }
         } catch (error) {
             console.log('YouTube API live check failed:', error);
@@ -1058,6 +1082,12 @@ class YouTubeSyncApp {
                                 this.noVideoMessage.style.display = 'none';
                                 this.notifyInfo('Loading Video', 'Loading queued video');
                                 
+                                // Clear the updating flag after a short delay to allow user interactions
+                                setTimeout(() => {
+                                    this.isUpdatingFromRemote = false;
+                                    console.log('Cleared isUpdatingFromRemote after pending video load');
+                                }, 2000);
+                                
                                 // Check for live stream and sync
                                 this.checkAndSyncLiveStream(videoId);
                                 
@@ -1066,7 +1096,7 @@ class YouTubeSyncApp {
                                     setTimeout(() => {
                                         this.syncVideoState(this.pendingVideoState);
                                         this.pendingVideoState = null;
-                                    }, 2000);
+                                    }, 3000);
                                 }
                             }
                             
@@ -1158,7 +1188,7 @@ class YouTubeSyncApp {
                 this.socket.emit('video-play', { currentTime });
                 break;
             case YT.PlayerState.PAUSED:
-                console.log('Local user paused video - emitting video-pause event');
+                console.log('Local user paused video - emitting video-pause event at time:', currentTime);
                 this.socket.emit('video-pause', { currentTime });
                 break;
             case YT.PlayerState.ENDED:
