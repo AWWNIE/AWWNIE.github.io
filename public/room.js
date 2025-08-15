@@ -4,6 +4,7 @@ class YouTubeSyncApp {
         this.player = null;
         this.playerReady = false;
         this.apiReady = false;
+        this.creatingPlayer = false;
         this.currentRoom = this.getRoomIdFromUrl();
         this.isHost = false;
         this.isUpdatingFromRemote = false;
@@ -240,8 +241,17 @@ class YouTubeSyncApp {
 
     loadYouTubeVideo(videoId) {
         console.log('loadYouTubeVideo called with:', videoId);
+        console.log('Player state - exists:', !!this.player, 'ready:', this.playerReady, 'creating:', this.creatingPlayer);
         
-        if (this.player && this.playerReady && typeof this.player.loadVideoById === 'function') {
+        // Double-check player readiness
+        const isPlayerActuallyReady = this.player && 
+                                     this.playerReady && 
+                                     typeof this.player.loadVideoById === 'function' &&
+                                     this.player.getPlayerState !== undefined;
+        
+        console.log('Is player actually ready?', isPlayerActuallyReady);
+        
+        if (isPlayerActuallyReady) {
             console.log('Player ready, loading video immediately');
             this.isUpdatingFromRemote = true;
             this.player.loadVideoById(videoId);
@@ -252,7 +262,12 @@ class YouTubeSyncApp {
             this.noVideoMessage.style.display = 'none';
             
             // Try to initialize player if not done yet
-            if (!this.playerReady) {
+            if (!this.playerReady && !this.creatingPlayer) {
+                console.log('Initializing player for pending video');
+                this.initializePlayer();
+            } else if (this.playerReady && !isPlayerActuallyReady) {
+                console.log('Player marked as ready but methods missing - reinitializing');
+                this.playerReady = false;
                 this.initializePlayer();
             }
         }
@@ -334,7 +349,12 @@ class YouTubeSyncApp {
 
     async initializePlayer() {
         if (this.player && this.playerReady) {
-            console.log('Player already initialized');
+            console.log('Player already initialized and ready');
+            return Promise.resolve();
+        }
+
+        if (this.player && !this.playerReady) {
+            console.log('Player exists but not ready yet, waiting...');
             return Promise.resolve();
         }
 
@@ -344,6 +364,22 @@ class YouTubeSyncApp {
                 setTimeout(() => this.initializePlayer().then(resolve), 500);
             });
         }
+
+        // Prevent multiple player creation
+        if (this.creatingPlayer) {
+            console.log('Player creation already in progress...');
+            return Promise.resolve();
+        }
+
+        // Clear any existing player
+        if (this.player && typeof this.player.destroy === 'function') {
+            console.log('Destroying existing player');
+            this.player.destroy();
+            this.player = null;
+            this.playerReady = false;
+        }
+
+        this.creatingPlayer = true;
 
         return new Promise((resolve) => {
             console.log('Creating YouTube player...');
@@ -359,12 +395,21 @@ class YouTubeSyncApp {
                     },
                     events: {
                         'onReady': (event) => {
-                            console.log('YouTube player ready');
+                            console.log('YouTube player ready - setting playerReady = true');
                             this.playerReady = true;
+                            this.creatingPlayer = false;
+                            
+                            // Verify the player methods exist
+                            console.log('Player methods available:', {
+                                loadVideoById: typeof this.player.loadVideoById,
+                                playVideo: typeof this.player.playVideo,
+                                pauseVideo: typeof this.player.pauseVideo
+                            });
                             
                             // Load pending video if any
                             if (this.pendingVideoId) {
                                 console.log('Loading pending video:', this.pendingVideoId);
+                                this.isUpdatingFromRemote = true;
                                 this.player.loadVideoById(this.pendingVideoId);
                                 this.pendingVideoId = null;
                                 this.noVideoMessage.style.display = 'none';
@@ -375,11 +420,13 @@ class YouTubeSyncApp {
                         'onStateChange': (event) => this.onPlayerStateChange(event),
                         'onError': (event) => {
                             console.error('YouTube player error:', event.data);
+                            this.creatingPlayer = false;
                         }
                     }
                 });
             } catch (error) {
                 console.error('Error creating YouTube player:', error);
+                this.creatingPlayer = false;
                 setTimeout(() => this.initializePlayer().then(resolve), 1000);
             }
         });
@@ -419,9 +466,15 @@ function onYouTubeIframeAPIReady() {
     console.log('Global YouTube API Ready callback');
     window.youtubeAPIReady = true;
     if (window.app) {
-        console.log('Calling app.waitForYouTubeAPI()');
+        console.log('Setting app.apiReady = true');
         window.app.apiReady = true;
-        window.app.initializePlayer();
+        // Only initialize if not already creating
+        if (!window.app.creatingPlayer && !window.app.playerReady) {
+            console.log('Calling initializePlayer from global callback');
+            window.app.initializePlayer();
+        } else {
+            console.log('Skipping init - creating:', window.app.creatingPlayer, 'ready:', window.app.playerReady);
+        }
     }
 }
 
