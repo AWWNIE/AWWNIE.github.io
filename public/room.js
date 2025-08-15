@@ -9,8 +9,10 @@ class YouTubeSyncApp {
         this.isHost = false;
         this.isUpdatingFromRemote = false;
         this.pendingVideoId = null;
+        this.pendingVideoState = null;
         this.lastKnownTime = 0;
         this.seekCheckInterval = null;
+        this.syncRetryCount = 0;
         
         this.initializeElements();
         this.setupEventListeners();
@@ -29,6 +31,17 @@ class YouTubeSyncApp {
         
         // Wait for YouTube API to load
         this.waitForYouTubeAPI();
+        
+        // Handle window resize to adjust player size
+        window.addEventListener('resize', () => {
+            if (this.player && this.playerReady) {
+                const newHeight = this.getPlayerHeight();
+                const playerElement = document.getElementById('player');
+                if (playerElement) {
+                    playerElement.style.height = newHeight + 'px';
+                }
+            }
+        });
     }
 
     initializeElements() {
@@ -106,7 +119,10 @@ class YouTubeSyncApp {
                 this.loadYouTubeVideo(data.currentVideo);
                 this.notifyInfo('Video Loaded', 'Syncing with current video');
                 if (data.videoState) {
-                    this.syncVideoState(data.videoState);
+                    // Delay sync to ensure video is loaded
+                    setTimeout(() => {
+                        this.syncVideoState(data.videoState);
+                    }, 2000);
                 }
             }
             
@@ -126,6 +142,13 @@ class YouTubeSyncApp {
         this.socket.on('video-loaded', (data) => {
             this.loadYouTubeVideo(data.videoId);
             this.notifyInfo('Video Changed', 'A new video has been loaded');
+            
+            // Sync video state if provided
+            if (data.videoState) {
+                setTimeout(() => {
+                    this.syncVideoState(data.videoState);
+                }, 2000);
+            }
         });
 
         this.socket.on('video-play', (data) => {
@@ -182,11 +205,11 @@ class YouTubeSyncApp {
         const screenWidth = window.innerWidth;
         
         if (screenWidth >= 1200) {
-            // Desktop: larger player
-            return '600';
+            // Desktop: much larger player to be the main focus
+            return '800';
         } else if (screenWidth >= 768) {
             // Tablet
-            return '450';
+            return '500';
         } else if (screenWidth >= 480) {
             // Mobile
             return '315';
@@ -272,6 +295,89 @@ class YouTubeSyncApp {
         const minutes = Math.floor(seconds / 60);
         const remainingSeconds = seconds % 60;
         return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
+    syncVideoState(data) {
+        if (!data) {
+            console.log('No video state data to sync');
+            return;
+        }
+        
+        if (!this.player || !this.playerReady) {
+            console.log('Player not ready for sync, storing state for later');
+            this.pendingVideoState = data;
+            return;
+        }
+        
+        console.log('Syncing video state:', data);
+        this.isUpdatingFromRemote = true;
+        
+        try {
+            const timeDiff = Date.now() - data.lastUpdate;
+            let targetTime = data.currentTime;
+            
+            // Only adjust for time drift if video is playing
+            if (data.isPlaying) {
+                targetTime += (timeDiff / 1000);
+            }
+            
+            // Seek to the target time
+            this.player.seekTo(targetTime, true);
+            
+            // Handle play/pause state with retry logic
+            const syncPlayState = () => {
+                try {
+                    const currentState = this.player.getPlayerState();
+                    
+                    if (data.isPlaying && currentState !== YT.PlayerState.PLAYING) {
+                        this.player.playVideo();
+                        console.log('Started playback for sync');
+                    } else if (!data.isPlaying && currentState === YT.PlayerState.PLAYING) {
+                        this.player.pauseVideo();
+                        console.log('Paused playback for sync');
+                    }
+                } catch (error) {
+                    console.error('Error syncing play state:', error);
+                }
+            };
+            
+            // Initial sync after seeking
+            setTimeout(syncPlayState, 300);
+            
+            // Verify sync worked after a delay
+            setTimeout(() => {
+                try {
+                    const currentTime = this.player.getCurrentTime();
+                    const currentState = this.player.getPlayerState();
+                    const expectedPlaying = data.isPlaying;
+                    const actualPlaying = currentState === YT.PlayerState.PLAYING;
+                    
+                    console.log('Sync verification:', {
+                        expectedTime: targetTime,
+                        actualTime: currentTime,
+                        timeDiff: Math.abs(currentTime - targetTime),
+                        expectedPlaying,
+                        actualPlaying
+                    });
+                    
+                    // Retry if sync failed
+                    if (Math.abs(currentTime - targetTime) > 2 || expectedPlaying !== actualPlaying) {
+                        console.log('Sync verification failed, retrying...');
+                        syncPlayState();
+                    }
+                } catch (error) {
+                    console.error('Error in sync verification:', error);
+                }
+            }, 1000);
+            
+        } catch (error) {
+            console.error('Error in syncVideoState:', error);
+        }
+        
+        // Clear the remote update flag
+        setTimeout(() => {
+            this.isUpdatingFromRemote = false;
+        }, 1500);
     }
 
     leaveRoom() {
@@ -666,6 +772,14 @@ class YouTubeSyncApp {
                                 this.pendingVideoId = null;
                                 this.noVideoMessage.style.display = 'none';
                                 this.notifyInfo('Loading Video', 'Loading queued video');
+                                
+                                // Apply pending video state after video loads
+                                if (this.pendingVideoState) {
+                                    setTimeout(() => {
+                                        this.syncVideoState(this.pendingVideoState);
+                                        this.pendingVideoState = null;
+                                    }, 2000);
+                                }
                             }
                             
                             resolve();
