@@ -48,6 +48,7 @@ class YouTubeSyncApp {
         this.queueCount = document.getElementById('queue-count');
         this.queueList = document.getElementById('queue-list');
         this.emptyQueueMessage = document.getElementById('empty-queue-message');
+        this.notificationContainer = document.getElementById('notification-container');
     }
 
     setupEventListeners() {
@@ -66,18 +67,21 @@ class YouTubeSyncApp {
         this.socket.on('connect', () => {
             this.connectionStatus.textContent = 'Connected';
             this.connectionStatus.style.color = '#4caf50';
+            this.notifySuccess('Connected', 'Successfully connected to the server');
         });
 
         this.socket.on('disconnect', (reason) => {
             console.log('Disconnected from server:', reason);
             this.connectionStatus.textContent = 'Disconnected';
             this.connectionStatus.style.color = '#f44336';
+            this.notifyWarning('Disconnected', `Connection lost: ${reason}`);
         });
 
         this.socket.on('reconnect', () => {
             console.log('Reconnected to server');
             this.connectionStatus.textContent = 'Connected';
             this.connectionStatus.style.color = '#4caf50';
+            this.notifySuccess('Reconnected', 'Connection restored successfully');
             
             // Rejoin room after reconnection
             if (this.currentRoom) {
@@ -95,8 +99,12 @@ class YouTubeSyncApp {
                 this.userCountSpan.textContent = data.userCount;
             }
             
+            const hostStatus = data.isHost ? 'as host' : 'as viewer';
+            this.notifySuccess('Room Joined', `Joined room ${data.roomId} ${hostStatus}`);
+            
             if (data.currentVideo) {
                 this.loadYouTubeVideo(data.currentVideo);
+                this.notifyInfo('Video Loaded', 'Syncing with current video');
                 if (data.videoState) {
                     this.syncVideoState(data.videoState);
                 }
@@ -104,46 +112,64 @@ class YouTubeSyncApp {
             
             if (data.queue) {
                 this.updateQueue(data.queue);
+                if (data.queue.length > 0) {
+                    this.notifyInfo('Queue Updated', `${data.queue.length} video(s) in queue`);
+                }
             }
         });
 
         this.socket.on('error', (message) => {
             console.error('Socket error:', message);
-            alert('Error: ' + message);
+            this.notifyError('Room Error', message);
         });
 
         this.socket.on('video-loaded', (data) => {
             this.loadYouTubeVideo(data.videoId);
+            this.notifyInfo('Video Changed', 'A new video has been loaded');
         });
 
         this.socket.on('video-play', (data) => {
-            this.syncVideoState(data);
+            console.log('Received video-play event:', data);
+            this.handleRemotePlay(data);
+            this.notifyInfo('Video Playing', 'Video playback started');
         });
 
         this.socket.on('video-pause', (data) => {
-            this.syncVideoState(data);
+            console.log('Received video-pause event:', data);
+            this.handleRemotePause(data);
+            this.notifyInfo('Video Paused', 'Video playback paused');
         });
 
         this.socket.on('video-seek', (data) => {
-            this.syncVideoState(data);
+            console.log('Received video-seek event:', data);
+            this.handleRemoteSeek(data);
+            const time = Math.floor(data.currentTime);
+            this.notifyInfo('Video Seeking', `Synced to ${this.formatTime(time)}`);
         });
 
         this.socket.on('user-count-updated', (data) => {
             console.log('User count updated:', data.userCount);
+            const previousCount = parseInt(this.userCountSpan.textContent) || 0;
             this.userCountSpan.textContent = data.userCount;
+            
+            if (data.userCount > previousCount) {
+                this.notifySuccess('User Joined', `Someone joined the room (${data.userCount} users online)`);
+            } else if (data.userCount < previousCount) {
+                this.notifyInfo('User Left', `Someone left the room (${data.userCount} users online)`);
+            }
         });
 
         this.socket.on('host-changed', (data) => {
             this.isHost = data.isHost;
             this.updateHostIndicator();
+            if (data.isHost) {
+                this.notifySuccess('Host Status', 'You are now the host');
+            }
         });
 
         this.socket.on('queue-updated', (data) => {
             this.updateQueue(data.queue);
-        });
-
-        this.socket.on('error', (message) => {
-            alert('Error: ' + message);
+            this.notifyInfo('Queue Updated', `${data.queue.length} video(s) in queue`);
         });
     }
 
@@ -170,6 +196,84 @@ class YouTubeSyncApp {
         }
     }
 
+    // Notification System
+    showNotification(title, message, type = 'info', duration = 5000) {
+        // Log to console with timestamp
+        const timestamp = new Date().toLocaleTimeString();
+        const logMessage = `[${timestamp}] ${type.toUpperCase()}: ${title} - ${message}`;
+        console.log(logMessage);
+        
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.innerHTML = `
+            <button class="notification-close">&times;</button>
+            <div class="notification-title">${title}</div>
+            <div class="notification-message">${message}</div>
+        `;
+        
+        // Add to container
+        this.notificationContainer.appendChild(notification);
+        
+        // Show with animation
+        setTimeout(() => {
+            notification.classList.add('show');
+        }, 100);
+        
+        // Auto-hide after duration
+        const hideTimeout = setTimeout(() => {
+            this.hideNotification(notification);
+        }, duration);
+        
+        // Close button functionality
+        const closeBtn = notification.querySelector('.notification-close');
+        closeBtn.addEventListener('click', () => {
+            clearTimeout(hideTimeout);
+            this.hideNotification(notification);
+        });
+        
+        // Click to dismiss
+        notification.addEventListener('click', () => {
+            clearTimeout(hideTimeout);
+            this.hideNotification(notification);
+        });
+        
+        return notification;
+    }
+    
+    hideNotification(notification) {
+        notification.classList.remove('show');
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }
+    
+    // Convenience methods for different notification types
+    notifySuccess(title, message, duration = 4000) {
+        return this.showNotification(title, message, 'success', duration);
+    }
+    
+    notifyInfo(title, message, duration = 5000) {
+        return this.showNotification(title, message, 'info', duration);
+    }
+    
+    notifyWarning(title, message, duration = 6000) {
+        return this.showNotification(title, message, 'warning', duration);
+    }
+    
+    notifyError(title, message, duration = 8000) {
+        return this.showNotification(title, message, 'error', duration);
+    }
+    
+    // Helper method to format time
+    formatTime(seconds) {
+        const minutes = Math.floor(seconds / 60);
+        const remainingSeconds = seconds % 60;
+        return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+    }
+
     leaveRoom() {
         window.location.href = '/';
     }
@@ -179,9 +283,12 @@ class YouTubeSyncApp {
         this.inviteUrl.setSelectionRange(0, 99999);
         navigator.clipboard.writeText(this.inviteUrl.value).then(() => {
             this.copyLinkBtn.textContent = 'Copied!';
+            this.notifySuccess('Link Copied', 'Invite link copied to clipboard');
             setTimeout(() => {
                 this.copyLinkBtn.textContent = 'Copy Link';
             }, 2000);
+        }).catch(() => {
+            this.notifyError('Copy Failed', 'Failed to copy link to clipboard');
         });
     }
 
@@ -190,20 +297,24 @@ class YouTubeSyncApp {
         const videoId = this.extractVideoId(url);
         
         if (videoId) {
+            this.notifyInfo('Adding to Queue', 'Fetching video information...');
             const title = await this.getVideoTitle(videoId);
             this.socket.emit('add-to-queue', { videoId, title });
             this.videoUrlInput.value = '';
+            this.notifySuccess('Added to Queue', `"${title}" added to queue`);
         } else {
-            alert('Please enter a valid YouTube URL');
+            this.notifyError('Invalid URL', 'Please enter a valid YouTube URL');
         }
     }
 
     playNext() {
         this.socket.emit('play-next');
+        this.notifyInfo('Playing Next', 'Loading next video from queue');
     }
 
     removeFromQueue(itemId) {
         this.socket.emit('remove-from-queue', { itemId });
+        this.notifyInfo('Queue Updated', 'Video removed from queue');
     }
 
     async getVideoTitle(videoId) {
@@ -277,12 +388,14 @@ class YouTubeSyncApp {
         const videoId = this.extractVideoId(url);
         
         if (videoId) {
+            this.notifyInfo('Loading Video', 'Preparing to load video...');
             // Ensure player is initialized before loading video
             await this.initializePlayer();
             this.socket.emit('load-video', { videoId });
             this.videoUrlInput.value = '';
+            this.notifySuccess('Video Loading', 'Video sent to all users in the room');
         } else {
-            alert('Please enter a valid YouTube URL');
+            this.notifyError('Invalid URL', 'Please enter a valid YouTube URL');
         }
     }
 
@@ -340,55 +453,96 @@ class YouTubeSyncApp {
         }
     }
 
-    syncVideoState(state) {
+    handleRemotePlay(data) {
         if (!this.player || !this.playerReady) {
-            console.log('Cannot sync - player not ready');
+            console.log('Cannot handle remote play - player not ready');
             return;
         }
 
-        console.log('Syncing video state:', state);
+        console.log('Handling remote play:', data);
         
-        // Block local events during sync
+        // Temporarily block local events
         this.isUpdatingFromRemote = true;
         
         try {
-            const timeDiff = Date.now() - state.lastUpdate;
-            let targetTime = state.currentTime;
+            const timeDiff = Date.now() - data.lastUpdate;
+            let targetTime = data.currentTime + (timeDiff / 1000);
             
-            // Compensate for network delay if video is playing
-            if (state.isPlaying) {
-                targetTime += timeDiff / 1000;
-            }
-
-            console.log('Seeking to time:', targetTime, 'isPlaying:', state.isPlaying);
-
-            // Always seek first to ensure we're at the right time
+            console.log('Syncing to play at time:', targetTime);
+            
             this.player.seekTo(targetTime, true);
             
-            // Then set the play state
             setTimeout(() => {
-                if (state.isPlaying) {
-                    if (this.player.getPlayerState() !== YT.PlayerState.PLAYING) {
-                        console.log('Starting playback');
-                        this.player.playVideo();
-                    }
-                } else {
-                    if (this.player.getPlayerState() === YT.PlayerState.PLAYING) {
-                        console.log('Pausing playback');
-                        this.player.pauseVideo();
-                    }
+                if (this.player.getPlayerState() !== YT.PlayerState.PLAYING) {
+                    this.player.playVideo();
+                    console.log('Started playback');
                 }
-            }, 100);
+            }, 200);
             
         } catch (error) {
-            console.error('Error syncing video state:', error);
+            console.error('Error handling remote play:', error);
         }
 
-        // Allow local events after sync completes
+        // Unblock after delay
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
-            console.log('Sync complete, allowing local events');
-        }, 2000);
+        }, 1000);
+    }
+
+    handleRemotePause(data) {
+        if (!this.player || !this.playerReady) {
+            console.log('Cannot handle remote pause - player not ready');
+            return;
+        }
+
+        console.log('Handling remote pause:', data);
+        
+        // Temporarily block local events
+        this.isUpdatingFromRemote = true;
+        
+        try {
+            this.player.seekTo(data.currentTime, true);
+            
+            setTimeout(() => {
+                if (this.player.getPlayerState() === YT.PlayerState.PLAYING) {
+                    this.player.pauseVideo();
+                    console.log('Paused playback');
+                }
+            }, 200);
+            
+        } catch (error) {
+            console.error('Error handling remote pause:', error);
+        }
+
+        // Unblock after delay
+        setTimeout(() => {
+            this.isUpdatingFromRemote = false;
+        }, 1000);
+    }
+
+    handleRemoteSeek(data) {
+        if (!this.player || !this.playerReady) {
+            console.log('Cannot handle remote seek - player not ready');
+            return;
+        }
+
+        console.log('Handling remote seek:', data);
+        
+        // Temporarily block local events
+        this.isUpdatingFromRemote = true;
+        
+        try {
+            this.player.seekTo(data.currentTime, true);
+            console.log('Seeked to:', data.currentTime);
+            
+        } catch (error) {
+            console.error('Error handling remote seek:', error);
+        }
+
+        // Unblock after delay
+        setTimeout(() => {
+            this.isUpdatingFromRemote = false;
+        }, 1000);
     }
 
     updateRoomInfo() {
@@ -499,6 +653,8 @@ class YouTubeSyncApp {
                                 pauseVideo: typeof this.player.pauseVideo
                             });
                             
+                            this.notifySuccess('Player Ready', 'YouTube player initialized successfully');
+                            
                             // Start seek detection
                             this.startSeekDetection();
                             
@@ -509,6 +665,7 @@ class YouTubeSyncApp {
                                 this.player.loadVideoById(this.pendingVideoId);
                                 this.pendingVideoId = null;
                                 this.noVideoMessage.style.display = 'none';
+                                this.notifyInfo('Loading Video', 'Loading queued video');
                             }
                             
                             resolve();
@@ -517,6 +674,15 @@ class YouTubeSyncApp {
                         'onError': (event) => {
                             console.error('YouTube player error:', event.data);
                             this.creatingPlayer = false;
+                            const errorMessages = {
+                                2: 'Invalid video ID',
+                                5: 'Video not supported in HTML5',
+                                100: 'Video not found or private',
+                                101: 'Video not allowed to be embedded',
+                                150: 'Video not allowed to be embedded'
+                            };
+                            const errorMsg = errorMessages[event.data] || `Player error: ${event.data}`;
+                            this.notifyError('Video Error', errorMsg);
                         }
                     }
                 });
@@ -540,18 +706,26 @@ class YouTubeSyncApp {
                 const currentTime = this.player.getCurrentTime();
                 const playerState = this.player.getPlayerState();
                 
-                // Only check for seeks when not buffering or loading
-                if (playerState === YT.PlayerState.BUFFERING || playerState === YT.PlayerState.CUED) {
+                // Only check for seeks when video is playing or paused (not buffering)
+                if (playerState === YT.PlayerState.BUFFERING || 
+                    playerState === YT.PlayerState.CUED || 
+                    playerState === YT.PlayerState.UNSTARTED) {
+                    this.lastKnownTime = currentTime;
                     return;
                 }
                 
                 if (this.lastKnownTime > 0) {
-                    const expectedTime = this.lastKnownTime + 1; // Expected time after 1 second
+                    // For playing videos, expect time to advance
+                    let expectedTime = this.lastKnownTime;
+                    if (playerState === YT.PlayerState.PLAYING) {
+                        expectedTime += 1;
+                    }
+                    
                     const timeDiff = Math.abs(currentTime - expectedTime);
                     
-                    // If time is off by more than 3 seconds, user probably seeked
-                    if (timeDiff > 3) {
-                        console.log('Manual seek detected:', this.lastKnownTime, '->', currentTime);
+                    // If time is off by more than 2 seconds, user probably seeked
+                    if (timeDiff > 2) {
+                        console.log('Manual seek detected:', this.lastKnownTime, '->', currentTime, 'diff:', timeDiff);
                         this.socket.emit('video-seek', { currentTime });
                     }
                 }
@@ -568,21 +742,21 @@ class YouTubeSyncApp {
     }
 
     onPlayerStateChange(event) {
+        const currentTime = this.player ? this.player.getCurrentTime() : 0;
+        console.log('Player state changed:', event.data, 'at time:', currentTime, 'isUpdatingFromRemote:', this.isUpdatingFromRemote);
+        
         if (this.isUpdatingFromRemote) {
-            console.log('Ignoring state change - updating from remote');
+            console.log('Ignoring state change - currently syncing from remote');
             return;
         }
-
-        const currentTime = this.player.getCurrentTime();
-        console.log('Player state changed:', event.data, 'at time:', currentTime);
         
         switch (event.data) {
             case YT.PlayerState.PLAYING:
-                console.log('Emitting video-play event');
+                console.log('Local user started playback - emitting video-play event');
                 this.socket.emit('video-play', { currentTime });
                 break;
             case YT.PlayerState.PAUSED:
-                console.log('Emitting video-pause event');
+                console.log('Local user paused video - emitting video-pause event');
                 this.socket.emit('video-pause', { currentTime });
                 break;
             case YT.PlayerState.ENDED:
@@ -595,10 +769,13 @@ class YouTubeSyncApp {
                 }
                 break;
             case YT.PlayerState.BUFFERING:
-                console.log('Video buffering');
+                console.log('Video buffering at time:', currentTime);
                 break;
             case YT.PlayerState.CUED:
                 console.log('Video cued');
+                break;
+            case YT.PlayerState.UNSTARTED:
+                console.log('Video unstarted');
                 break;
         }
     }
