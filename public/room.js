@@ -35,16 +35,23 @@ class YouTubeSyncApp {
         this.userCountSpan = document.getElementById('user-count');
         this.videoUrlInput = document.getElementById('video-url-input');
         this.loadVideoBtn = document.getElementById('load-video-btn');
+        this.addToQueueBtn = document.getElementById('add-to-queue-btn');
+        this.playNextBtn = document.getElementById('play-next-btn');
         this.connectionStatus = document.getElementById('connection-status');
         this.hostIndicator = document.getElementById('host-indicator');
         this.noVideoMessage = document.getElementById('no-video-message');
         this.inviteUrl = document.getElementById('invite-url');
         this.copyLinkBtn = document.getElementById('copy-link-btn');
+        this.queueCount = document.getElementById('queue-count');
+        this.queueList = document.getElementById('queue-list');
+        this.emptyQueueMessage = document.getElementById('empty-queue-message');
     }
 
     setupEventListeners() {
         this.leaveRoomBtn.addEventListener('click', () => this.leaveRoom());
         this.loadVideoBtn.addEventListener('click', () => this.loadVideo());
+        this.addToQueueBtn.addEventListener('click', () => this.addToQueue());
+        this.playNextBtn.addEventListener('click', () => this.playNext());
         this.copyLinkBtn.addEventListener('click', () => this.copyInviteLink());
         
         this.videoUrlInput.addEventListener('keypress', (e) => {
@@ -73,6 +80,10 @@ class YouTubeSyncApp {
                 if (data.videoState) {
                     this.syncVideoState(data.videoState);
                 }
+            }
+            
+            if (data.queue) {
+                this.updateQueue(data.queue);
             }
         });
 
@@ -110,6 +121,10 @@ class YouTubeSyncApp {
             this.updateHostIndicator();
         });
 
+        this.socket.on('queue-updated', (data) => {
+            this.updateQueue(data.queue);
+        });
+
         this.socket.on('error', (message) => {
             alert('Error: ' + message);
         });
@@ -132,6 +147,74 @@ class YouTubeSyncApp {
             setTimeout(() => {
                 this.copyLinkBtn.textContent = 'Copy Link';
             }, 2000);
+        });
+    }
+
+    async addToQueue() {
+        const url = this.videoUrlInput.value.trim();
+        const videoId = this.extractVideoId(url);
+        
+        if (videoId) {
+            const title = await this.getVideoTitle(videoId);
+            this.socket.emit('add-to-queue', { videoId, title });
+            this.videoUrlInput.value = '';
+        } else {
+            alert('Please enter a valid YouTube URL');
+        }
+    }
+
+    playNext() {
+        this.socket.emit('play-next');
+    }
+
+    removeFromQueue(itemId) {
+        this.socket.emit('remove-from-queue', { itemId });
+    }
+
+    async getVideoTitle(videoId) {
+        try {
+            // Try to get title from YouTube oEmbed API
+            const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+            if (response.ok) {
+                const data = await response.json();
+                return data.title;
+            }
+        } catch (error) {
+            console.log('Could not fetch video title:', error);
+        }
+        return `Video ${videoId.substring(0, 8)}`;
+    }
+
+    updateQueue(queue) {
+        this.queueCount.textContent = queue.length;
+        this.playNextBtn.disabled = queue.length === 0;
+        
+        if (queue.length === 0) {
+            this.emptyQueueMessage.style.display = 'block';
+            this.queueList.style.display = 'none';
+        } else {
+            this.emptyQueueMessage.style.display = 'none';
+            this.queueList.style.display = 'block';
+            this.renderQueue(queue);
+        }
+    }
+
+    renderQueue(queue) {
+        this.queueList.innerHTML = '';
+        
+        queue.forEach((item, index) => {
+            const queueItem = document.createElement('div');
+            queueItem.className = 'queue-item';
+            queueItem.innerHTML = `
+                <div class="queue-item-info">
+                    <div class="queue-item-title">${item.title}</div>
+                    <div class="queue-item-meta">#${index + 1} in queue</div>
+                </div>
+                <div class="queue-item-actions">
+                    <button class="btn danger" onclick="app.removeFromQueue('${item.id}')">Remove</button>
+                </div>
+            `;
+            this.queueList.appendChild(queueItem);
         });
     }
 
@@ -248,6 +331,14 @@ class YouTubeSyncApp {
                 break;
             case YT.PlayerState.PAUSED:
                 this.socket.emit('video-pause', { currentTime });
+                break;
+            case YT.PlayerState.ENDED:
+                // Auto-play next video if queue has items and user is host
+                if (this.isHost) {
+                    setTimeout(() => {
+                        this.socket.emit('play-next');
+                    }, 1000);
+                }
                 break;
         }
     }

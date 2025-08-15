@@ -136,6 +136,88 @@ p {
     margin-bottom: 20px;
 }
 
+.queue-section {
+    background: rgba(20, 20, 20, 0.95);
+    border: 1px solid rgba(100, 70, 160, 0.3);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+    backdrop-filter: blur(10px);
+}
+
+.queue-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.queue-header h3 {
+    color: #e0e0e0;
+    margin: 0;
+}
+
+#queue-container {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+#queue-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.queue-item {
+    background: rgba(40, 40, 40, 0.8);
+    border: 1px solid rgba(100, 70, 160, 0.2);
+    border-radius: 8px;
+    padding: 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.queue-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.queue-item-title {
+    color: #e0e0e0;
+    font-weight: bold;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.queue-item-meta {
+    color: #b0b0b0;
+    font-size: 0.8rem;
+}
+
+.queue-item-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: 10px;
+}
+
+.queue-item .btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
+}
+
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
 #video-url-input {
     flex: 1;
     padding: 12px;

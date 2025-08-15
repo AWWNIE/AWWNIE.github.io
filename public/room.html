@@ -27,7 +27,8 @@
             <div class="video-section">
                 <div class="video-controls">
                     <input type="text" id="video-url-input" placeholder="Paste YouTube URL here">
-                    <button id="load-video-btn" class="btn primary">Load Video</button>
+                    <button id="load-video-btn" class="btn primary">Play Now</button>
+                    <button id="add-to-queue-btn" class="btn secondary">Add to Queue</button>
                 </div>
                 
                 <div id="video-container">
@@ -36,6 +37,19 @@
                         <h3>No video loaded</h3>
                         <p>Paste a YouTube URL above to start watching together</p>
                     </div>
+                </div>
+            </div>
+
+            <div class="queue-section">
+                <div class="queue-header">
+                    <h3>Queue (<span id="queue-count">0</span>)</h3>
+                    <button id="play-next-btn" class="btn secondary" disabled>Play Next</button>
+                </div>
+                <div id="queue-container">
+                    <div id="empty-queue-message" class="placeholder">
+                        <p>No videos in queue</p>
+                    </div>
+                    <div id="queue-list"></div>
                 </div>
             </div>
 

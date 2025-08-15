@@ -29,6 +29,7 @@ function createRoom(roomId) {
       currentTime: 0,
       lastUpdate: Date.now()
     },
+    queue: [],
     host: null
   };
 }
@@ -70,7 +71,8 @@ io.on('connection', (socket) => {
       roomId, 
       isHost,
       currentVideo: room.currentVideo,
-      videoState: room.videoState
+      videoState: room.videoState,
+      queue: room.queue
     });
 
     socket.to(roomId).emit('user-joined', { userId: socket.id, userCount: room.users.size });
@@ -132,6 +134,52 @@ io.on('connection', (socket) => {
     };
 
     socket.to(socket.roomId).emit('video-seek', room.videoState);
+  });
+
+  socket.on('add-to-queue', (data) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+
+    const queueItem = {
+      id: Date.now().toString(),
+      videoId: data.videoId,
+      title: data.title,
+      addedBy: socket.id,
+      addedAt: Date.now()
+    };
+
+    room.queue.push(queueItem);
+    io.to(socket.roomId).emit('queue-updated', { queue: room.queue });
+    console.log(`Video added to queue in room ${socket.roomId}: ${data.videoId}`);
+  });
+
+  socket.on('remove-from-queue', (data) => {
+    const room = rooms.get(socket.roomId);
+    if (!room) return;
+
+    room.queue = room.queue.filter(item => item.id !== data.itemId);
+    io.to(socket.roomId).emit('queue-updated', { queue: room.queue });
+    console.log(`Video removed from queue in room ${socket.roomId}: ${data.itemId}`);
+  });
+
+  socket.on('play-next', () => {
+    const room = rooms.get(socket.roomId);
+    if (!room || room.queue.length === 0) return;
+
+    const nextVideo = room.queue.shift();
+    room.currentVideo = nextVideo.videoId;
+    room.videoState = {
+      isPlaying: false,
+      currentTime: 0,
+      lastUpdate: Date.now()
+    };
+
+    io.to(socket.roomId).emit('video-loaded', { 
+      videoId: nextVideo.videoId,
+      videoState: room.videoState
+    });
+    io.to(socket.roomId).emit('queue-updated', { queue: room.queue });
+    console.log(`Playing next video in room ${socket.roomId}: ${nextVideo.videoId}`);
   });
 
   socket.on('disconnect', () => {
