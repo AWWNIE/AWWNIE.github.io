@@ -63,6 +63,7 @@ class YouTubeSyncApp {
         this.loadVideoBtn = document.getElementById('load-video-btn');
         this.addToQueueBtn = document.getElementById('add-to-queue-btn');
         this.playNextBtn = document.getElementById('play-next-btn');
+        this.goLiveBtn = document.getElementById('go-live-btn');
         this.connectionStatus = document.getElementById('connection-status');
         this.hostIndicator = document.getElementById('host-indicator');
         this.noVideoMessage = document.getElementById('no-video-message');
@@ -79,6 +80,7 @@ class YouTubeSyncApp {
         this.loadVideoBtn.addEventListener('click', () => this.loadVideo());
         this.addToQueueBtn.addEventListener('click', () => this.addToQueue());
         this.playNextBtn.addEventListener('click', () => this.playNext());
+        this.goLiveBtn.addEventListener('click', () => this.goLive());
         this.copyLinkBtn.addEventListener('click', () => this.copyInviteLink());
         
         this.videoUrlInput.addEventListener('keypress', (e) => {
@@ -151,6 +153,7 @@ class YouTubeSyncApp {
 
         this.socket.on('video-loaded', (data) => {
             this.loadYouTubeVideo(data.videoId);
+            this.hideGoLiveButton(); // Hide until we detect if it's live
             this.notifyInfo('Video Changed', 'A new video has been loaded');
             
             // Sync video state if provided
@@ -595,6 +598,9 @@ class YouTubeSyncApp {
             this.isUpdatingFromRemote = true;
             this.player.loadVideoById(videoId);
             this.noVideoMessage.style.display = 'none';
+            
+            // Check if this is a live stream and sync to live time
+            this.checkAndSyncLiveStream(videoId);
         } else {
             console.log('Player not ready, storing video ID for later:', videoId);
             this.pendingVideoId = videoId;
@@ -610,6 +616,121 @@ class YouTubeSyncApp {
                 this.initializePlayer();
             }
         }
+    }
+
+    async checkAndSyncLiveStream(videoId) {
+        try {
+            // Wait for video to load before checking if it's live
+            setTimeout(async () => {
+                if (!this.player || !this.playerReady) return;
+                
+                // Check if this is a live stream using YouTube Data API
+                const isLive = await this.isVideoLive(videoId);
+                
+                if (isLive) {
+                    console.log('Live stream detected, syncing to live time');
+                    this.syncToLiveTime();
+                    this.showGoLiveButton();
+                    this.notifyInfo('Live Stream', 'Synced to current live time');
+                } else {
+                    // For regular videos, check if we can detect live status from player
+                    setTimeout(() => {
+                        this.checkPlayerForLiveStream();
+                    }, 2000);
+                }
+            }, 1000);
+        } catch (error) {
+            console.error('Error checking live stream:', error);
+        }
+    }
+
+    async isVideoLive(videoId) {
+        try {
+            const API_KEY = 'AIzaSyA7TDHt3oyVHW78Dk-f7WTPXPjZwdEEU98';
+            const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${API_KEY}&part=snippet,liveStreamingDetails`);
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.items && data.items.length > 0) {
+                    const video = data.items[0];
+                    const isLive = video.snippet.liveBroadcastContent === 'live' || 
+                                  (video.liveStreamingDetails && 
+                                   video.liveStreamingDetails.actualStartTime && 
+                                   !video.liveStreamingDetails.actualEndTime);
+                    
+                    console.log('API Live check result:', isLive, video.snippet.liveBroadcastContent);
+                    return isLive;
+                }
+            }
+        } catch (error) {
+            console.log('YouTube API live check failed:', error);
+        }
+        
+        return false;
+    }
+
+    checkPlayerForLiveStream() {
+        try {
+            if (!this.player || !this.playerReady) return;
+            
+            const duration = this.player.getDuration();
+            const currentTime = this.player.getCurrentTime();
+            
+            // Live streams often have duration of 0 or very close to current time
+            if (duration === 0 || (duration > 0 && Math.abs(duration - currentTime) < 30)) {
+                console.log('Live stream detected via player (duration:', duration, 'current:', currentTime, ')');
+                this.syncToLiveTime();
+                this.showGoLiveButton();
+                this.notifyInfo('Live Stream', 'Synced to current live time');
+            }
+        } catch (error) {
+            console.error('Error checking player for live stream:', error);
+        }
+    }
+
+    syncToLiveTime() {
+        try {
+            if (!this.player || !this.playerReady) return;
+            
+            const duration = this.player.getDuration();
+            
+            if (duration === 0) {
+                // For live streams with duration 0, seek to a very high number to get live edge
+                console.log('Seeking to live edge (duration 0)');
+                this.player.seekTo(99999999, true);
+            } else if (duration > 0) {
+                // For live streams with known duration, seek near the end
+                const liveTime = Math.max(0, duration - 10); // 10 seconds from live edge
+                console.log('Seeking to live time:', liveTime, 'of', duration);
+                this.player.seekTo(liveTime, true);
+            }
+            
+            // Emit the live sync to other users in the room
+            if (this.isHost) {
+                const currentTime = duration === 0 ? 99999999 : Math.max(0, duration - 10);
+                this.socket.emit('video-seek', { currentTime });
+            }
+        } catch (error) {
+            console.error('Error syncing to live time:', error);
+        }
+    }
+
+    showGoLiveButton() {
+        if (this.goLiveBtn) {
+            this.goLiveBtn.style.display = 'inline-block';
+        }
+    }
+
+    hideGoLiveButton() {
+        if (this.goLiveBtn) {
+            this.goLiveBtn.style.display = 'none';
+        }
+    }
+
+    goLive() {
+        console.log('Manual go live requested');
+        this.syncToLiveTime();
+        this.notifySuccess('Live Sync', 'Synced to current live time');
     }
 
     handleRemotePlay(data) {
@@ -821,10 +942,14 @@ class YouTubeSyncApp {
                             if (this.pendingVideoId) {
                                 console.log('Loading pending video:', this.pendingVideoId);
                                 this.isUpdatingFromRemote = true;
-                                this.player.loadVideoById(this.pendingVideoId);
+                                const videoId = this.pendingVideoId;
+                                this.player.loadVideoById(videoId);
                                 this.pendingVideoId = null;
                                 this.noVideoMessage.style.display = 'none';
                                 this.notifyInfo('Loading Video', 'Loading queued video');
+                                
+                                // Check for live stream and sync
+                                this.checkAndSyncLiveStream(videoId);
                                 
                                 // Apply pending video state after video loads
                                 if (this.pendingVideoState) {
