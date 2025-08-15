@@ -1513,13 +1513,22 @@
       isSyncMaster: false,
       lastKnownTime: 0,
       lastUpdateTime: 0,
-      syncTolerance: 2.0, // seconds
+      syncTolerance: 5.0, // Increased to 5 seconds for better stability
+      adaptiveTolerance: {
+        base: 5.0,
+        max: 15.0,
+        latencyMultiplier: 2.0,
+        current: 5.0
+      },
       isInSync: true,
       syncCheckInterval: null,
       heartbeatInterval: null,
-      preventSync: false, // Flag to prevent recursive sync calls
+      preventSync: false,
       lastSyncBroadcast: 0,
-      syncCooldown: 1000 // Minimum time between sync broadcasts (1 second)
+      syncCooldown: 3000, // Increased to 3 seconds to reduce sync spam
+      networkLatency: 0,
+      latencyHistory: [],
+      maxLatencyHistory: 10
     };
 
     const SERVER_URL = window.location.origin;
@@ -1585,7 +1594,7 @@
       if (playerState === YT.PlayerState.PLAYING) {
         const timeDifference = Math.abs(currentTime - syncState.lastKnownTime);
         const wasInSync = syncState.isInSync;
-        syncState.isInSync = timeDifference <= syncState.syncTolerance;
+        syncState.isInSync = timeDifference <= syncState.adaptiveTolerance.current;
         
         // Only show sync status changes to avoid spam
         if (wasInSync !== syncState.isInSync) {
@@ -1646,19 +1655,37 @@
       if (syncState.isSyncMaster) return; // Masters don't follow heartbeats
 
       const { currentTime, isPaused, timestamp } = data;
-      const networkDelay = (Date.now() - timestamp) / 1000; // Convert to seconds
-      const adjustedTime = currentTime + networkDelay;
+      const now = Date.now();
+      const networkDelay = (now - timestamp) / 1000; // Convert to seconds
+      
+      // Track network latency for adaptive sync tolerance
+      syncState.networkLatency = networkDelay;
+      syncState.latencyHistory.push(networkDelay);
+      if (syncState.latencyHistory.length > syncState.maxLatencyHistory) {
+        syncState.latencyHistory.shift();
+      }
+      
+      // Calculate adaptive sync tolerance based on network conditions
+      const avgLatency = syncState.latencyHistory.reduce((a, b) => a + b, 0) / syncState.latencyHistory.length;
+      syncState.adaptiveTolerance.current = Math.min(
+        syncState.adaptiveTolerance.base + (avgLatency * syncState.adaptiveTolerance.latencyMultiplier),
+        syncState.adaptiveTolerance.max
+      );
+      
+      // More conservative time adjustment - use average latency instead of current
+      const adjustedTime = currentTime + avgLatency;
 
       syncState.lastKnownTime = adjustedTime;
-      syncState.lastUpdateTime = Date.now();
+      syncState.lastUpdateTime = now;
 
-      // Apply sync if we're significantly out of sync
+      // Apply sync if we're significantly out of sync using adaptive tolerance
       if (player && player.getCurrentTime) {
         const playerTime = player.getCurrentTime();
         const playerPaused = player.getPlayerState() !== YT.PlayerState.PLAYING;
         const timeDifference = Math.abs(playerTime - adjustedTime);
 
-        if (timeDifference > syncState.syncTolerance || playerPaused !== isPaused) {
+        // Use adaptive tolerance instead of fixed tolerance
+        if (timeDifference > syncState.adaptiveTolerance.current || playerPaused !== isPaused) {
           applySyncCorrection(adjustedTime, isPaused);
         }
       }
@@ -1667,12 +1694,14 @@
     function applySyncCorrection(targetTime, shouldBePaused) {
       // For anime mode, we can't directly control the player
       if (isAnimeMode) {
-        console.log('Anime sync correction requested - limited control available');
+        console.log(`Anime sync hint: ${shouldBePaused ? 'Pause' : 'Play'} at ${Math.floor(targetTime)}s`);
+        // Show a less intrusive notification for anime sync
+        showNotification(`Sync hint: ${shouldBePaused ? 'Pause' : 'Play'} at ${Math.floor(targetTime)}s`, "info", 2000);
         syncState.isInSync = true;
         updateSyncIndicator('syncing');
         setTimeout(() => {
           updateSyncIndicator();
-        }, 1000);
+        }, 2000);
         return;
       }
       
@@ -1743,14 +1772,14 @@
       return url.trim();
     }
 
-    function showNotification(message, type = 'info') {
+    function showNotification(message, type = 'info', duration = 4000) {
       const notification = document.getElementById("notification");
       notification.textContent = message;
       notification.className = `notification ${type}`;
       notification.style.display = "block";
       setTimeout(() => {
         notification.style.display = "none";
-      }, 4000);
+      }, duration);
     }
 
     function updateConnectionStatus(connected) {
@@ -3006,7 +3035,7 @@
         isAnimeMode = true;
         document.getElementById('animeSyncWarning').style.display = 'block';
         
-        const embedUrl = extraData.embedUrl || `https://animekai.ac/watch/${videoId}#ep=${extraData.episode || 1}`;
+        const embedUrl = extraData.embedUrl || `https://hianime.to/watch/${videoId}`;
         
         // Determine if user is sync master for anime controls
         const isSyncMaster = syncState.isSyncMaster;
@@ -3049,6 +3078,16 @@
         document.getElementById('animeSyncWarning').style.display = 'none';
         
         container.innerHTML = `<iframe src="https://player.twitch.tv/?video=${videoId}&parent=${window.location.hostname}&autoplay=true" width="100%" height="100%" frameborder="0"></iframe>`;
+      } else if (platform === 'dailymotion') {
+        isAnimeMode = false;
+        document.getElementById('animeSyncWarning').style.display = 'none';
+        
+        container.innerHTML = `<iframe src="https://www.dailymotion.com/embed/video/${videoId}?autoplay=1" width="100%" height="100%" frameborder="0" allow="autoplay"></iframe>`;
+      } else if (platform === 'rumble') {
+        isAnimeMode = false;
+        document.getElementById('animeSyncWarning').style.display = 'none';
+        
+        container.innerHTML = `<iframe src="https://rumble.com/embed/${videoId}/?pub=4" width="100%" height="100%" frameborder="0" allow="autoplay"></iframe>`;
       }
     }
 
