@@ -231,15 +231,31 @@ p {
 #video-container {
     position: relative;
     width: 100%;
-    max-width: 800px;
+    max-width: 1200px;
     margin: 0 auto;
 }
 
 #player {
     width: 100%;
-    height: 450px;
+    height: 675px;
     border-radius: 8px;
     overflow: hidden;
+}
+
+/* Responsive video container using aspect ratio */
+.video-wrapper {
+    position: relative;
+    width: 100%;
+    height: 0;
+    padding-bottom: 56.25%; /* 16:9 aspect ratio */
+}
+
+.video-wrapper #player {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
 }
 
 .placeholder {
@@ -287,6 +303,8 @@ p {
     transition: all 0.3s ease;
     text-decoration: none;
     display: inline-block;
+    touch-action: manipulation; /* Better mobile touch response */
+    -webkit-tap-highlight-color: transparent; /* Remove iOS tap highlight */
 }
 
 .btn.primary {
@@ -348,20 +366,66 @@ input[type="text"]::placeholder {
     display: none !important;
 }
 
-/* Responsive */
+/* Responsive Design */
+@media (max-width: 1024px) {
+    .container {
+        padding: 40px 30px;
+    }
+    
+    #video-container {
+        max-width: 900px;
+    }
+    
+    #player {
+        height: 506px; /* 16:9 ratio for 900px width */
+    }
+}
+
 @media (max-width: 768px) {
-    #home-screen h1 {
-        font-size: 2rem;
+    body {
+        font-size: 14px;
+    }
+    
+    h1 {
+        font-size: 2.5rem;
+    }
+    
+    .container {
+        padding: 30px 20px;
+    }
+    
+    #room-screen {
+        padding: 15px;
     }
     
     .room-header {
         flex-direction: column;
         gap: 15px;
         text-align: center;
+        padding: 15px;
+    }
+    
+    .room-info {
+        width: 100%;
+    }
+    
+    .invite-section {
+        margin-top: 10px;
+    }
+    
+    .invite-link {
+        flex-direction: column;
+        gap: 10px;
     }
     
     .video-controls {
         flex-direction: column;
+        gap: 10px;
+    }
+    
+    .video-section, .queue-section {
+        padding: 15px;
+        margin-bottom: 15px;
     }
     
     .join-room {
@@ -369,6 +433,71 @@ input[type="text"]::placeholder {
     }
     
     #player {
-        height: 250px;
+        height: 420px; /* 16:9 ratio for mobile */
+        border-radius: 8px;
+    }
+    
+    .queue-header {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .queue-item {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+    
+    .queue-item-actions {
+        margin-left: 0;
+        justify-content: center;
+    }
+    
+    #status-bar {
+        flex-direction: column;
+        gap: 10px;
+        text-align: center;
+    }
+}
+
+@media (max-width: 480px) {
+    h1 {
+        font-size: 2rem;
+    }
+    
+    .container {
+        padding: 20px 15px;
+    }
+    
+    #room-screen {
+        padding: 10px;
+    }
+    
+    .room-header, .video-section, .queue-section {
+        padding: 12px;
+    }
+    
+    #player {
+        height: 315px; /* 16:9 ratio for small mobile */
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+    
+    .queue-item .btn {
+        padding: 8px 16px;
+        font-size: 0.8rem;
+    }
+    
+    input[type="text"] {
+        padding: 10px;
+        font-size: 0.9rem;
+    }
+    
+    #video-url-input {
+        padding: 10px;
     }
 }

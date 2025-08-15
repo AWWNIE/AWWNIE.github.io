@@ -311,7 +311,7 @@ class YouTubeSyncApp {
             }
 
             this.player = new YT.Player('player', {
-                height: '450',
+                height: '675',
                 width: '100%',
                 playerVars: {
                     'playsinline': 1,
