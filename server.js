@@ -51,10 +51,14 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join-room', (roomId) => {
-    const room = rooms.get(roomId);
+    let room = rooms.get(roomId);
+    
+    // Create room if it doesn't exist
     if (!room) {
-      socket.emit('error', 'Room not found');
-      return;
+      room = createRoom(roomId);
+      room.host = socket.id;
+      rooms.set(roomId, room);
+      console.log(`Room ${roomId} created automatically for ${socket.id}`);
     }
 
     socket.join(roomId);

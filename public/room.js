@@ -13,7 +13,10 @@ class YouTubeSyncApp {
         
         // Join room automatically if room ID is in URL
         if (this.currentRoom) {
+            console.log('Joining room:', this.currentRoom);
             this.socket.emit('join-room', this.currentRoom);
+            // Update UI immediately with room ID from URL
+            this.updateRoomInfo();
         } else {
             // Redirect to home if no room ID
             window.location.href = '/';
@@ -71,6 +74,11 @@ class YouTubeSyncApp {
                     this.syncVideoState(data.videoState);
                 }
             }
+        });
+
+        this.socket.on('error', (message) => {
+            console.error('Socket error:', message);
+            alert('Error: ' + message);
         });
 
         this.socket.on('video-loaded', (data) => {
