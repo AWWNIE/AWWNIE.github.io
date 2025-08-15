@@ -23,9 +23,7 @@ class YouTubeSyncApp {
         }
         
         // Initialize YouTube player when API is ready
-        if (window.YT && window.YT.Player) {
-            this.onYouTubeIframeAPIReady();
-        }
+        this.initializePlayer();
     }
 
     initializeElements() {
@@ -218,20 +216,14 @@ class YouTubeSyncApp {
         });
     }
 
-    loadVideo() {
+    async loadVideo() {
         const url = this.videoUrlInput.value.trim();
         const videoId = this.extractVideoId(url);
         
         if (videoId) {
-            if (!this.player || !this.playerReady) {
-                // Initialize player if not ready
-                this.onYouTubeIframeAPIReady();
-                setTimeout(() => {
-                    this.socket.emit('load-video', { videoId });
-                }, 1000);
-            } else {
-                this.socket.emit('load-video', { videoId });
-            }
+            // Ensure player is initialized before loading video
+            await this.initializePlayer();
+            this.socket.emit('load-video', { videoId });
             this.videoUrlInput.value = '';
         } else {
             alert('Please enter a valid YouTube URL');
@@ -245,10 +237,20 @@ class YouTubeSyncApp {
     }
 
     loadYouTubeVideo(videoId) {
-        if (this.player) {
+        if (this.player && this.playerReady && typeof this.player.loadVideoById === 'function') {
             this.isUpdatingFromRemote = true;
             this.player.loadVideoById(videoId);
             this.noVideoMessage.style.display = 'none';
+        } else {
+            // Player not ready, initialize and retry
+            console.log('Player not ready, initializing...');
+            this.initializePlayer().then(() => {
+                if (this.player && typeof this.player.loadVideoById === 'function') {
+                    this.isUpdatingFromRemote = true;
+                    this.player.loadVideoById(videoId);
+                    this.noVideoMessage.style.display = 'none';
+                }
+            });
         }
     }
 
@@ -283,11 +285,7 @@ class YouTubeSyncApp {
         this.updateHostIndicator();
         
         // Initialize YouTube player when entering room
-        if (!this.player && window.YT && window.YT.Player) {
-            setTimeout(() => {
-                this.onYouTubeIframeAPIReady();
-            }, 500);
-        }
+        this.initializePlayer();
     }
 
     updateHostIndicator() {
@@ -299,25 +297,42 @@ class YouTubeSyncApp {
     }
 
 
-    onYouTubeIframeAPIReady() {
-        this.player = new YT.Player('player', {
-            height: '450',
-            width: '100%',
-            videoId: '',
-            playerVars: {
-                'playsinline': 1,
-                'controls': 1,
-                'rel': 0,
-                'modestbranding': 1
-            },
-            events: {
-                'onReady': (event) => {
-                    console.log('YouTube player ready');
-                    this.playerReady = true;
-                },
-                'onStateChange': (event) => this.onPlayerStateChange(event)
+    async initializePlayer() {
+        return new Promise((resolve) => {
+            if (this.player && this.playerReady) {
+                resolve();
+                return;
             }
+
+            // Wait for YouTube API to be loaded
+            if (!window.YT || !window.YT.Player) {
+                setTimeout(() => this.initializePlayer().then(resolve), 500);
+                return;
+            }
+
+            this.player = new YT.Player('player', {
+                height: '450',
+                width: '100%',
+                playerVars: {
+                    'playsinline': 1,
+                    'controls': 1,
+                    'rel': 0,
+                    'modestbranding': 1
+                },
+                events: {
+                    'onReady': (event) => {
+                        console.log('YouTube player ready');
+                        this.playerReady = true;
+                        resolve();
+                    },
+                    'onStateChange': (event) => this.onPlayerStateChange(event)
+                }
+            });
         });
+    }
+
+    onYouTubeIframeAPIReady() {
+        this.initializePlayer();
     }
 
     onPlayerStateChange(event) {
