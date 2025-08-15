@@ -3046,21 +3046,6 @@
       }
     };
 
-    // Button Event Handlers
-    document.getElementById("addVideoBtn").onclick = () => {
-      const url = document.getElementById("videoInput").value.trim();
-      if (!url) {
-        showNotification("Please enter a video URL", "error");
-        return;
-      }
-      
-      console.log("Adding video:", url);
-      socket.emit("addVideo", { roomId: currentRoom, videoUrl: url });
-      document.getElementById("videoInput").value = "";
-      document.getElementById("searchResults").style.display = "none";
-      showNotification("Video added to queue", "success");
-    };
-
     document.getElementById("searchBtn").onclick = () => {
       const query = document.getElementById("searchInput").value.trim();
       if (!query) {
