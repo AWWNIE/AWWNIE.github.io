@@ -1335,7 +1335,7 @@
               <span id="syncStatus">In Sync</span>
             </div>
             <div id="animeSyncWarning" class="anime-sync-warning">
-              Warning: Anime sync may be limited due to platform restrictions. Use Ready button for best synchronization.
+              🎌 Anime Mode: Manual sync required. Use the buttons below for sync hints or coordinate with other viewers.
             </div>
           </div>
           
@@ -1508,42 +1508,136 @@
       masterState: null
     };
 
-    // Professional Sync System
-    let syncState = {
-      isSyncMaster: false,
-      lastKnownTime: 0,
-      lastUpdateTime: 0,
-      syncTolerance: 5.0, // Increased to 5 seconds for better stability
-      adaptiveTolerance: {
-        base: 5.0,
-        max: 15.0,
-        latencyMultiplier: 2.0,
-        current: 5.0
-      },
-      isInSync: true,
-      syncCheckInterval: null,
-      heartbeatInterval: null,
-      preventSync: false,
-      lastSyncBroadcast: 0,
-      syncCooldown: 3000, // Increased to 3 seconds to reduce sync spam
+    // High-Precision Sync System
+    let precisionSync = {
+      // Server sync data
+      serverTime: 0,
+      serverCurrentTime: 0,
+      serverIsPaused: false,
+      serverPlaybackRate: 1.0,
+      lastServerUpdate: 0,
+      
+      // Network compensation
       networkLatency: 0,
       latencyHistory: [],
-      maxLatencyHistory: 10
+      clockOffset: 0,
+      
+      // Predictive sync
+      predictedTime: 0,
+      driftCorrection: 0,
+      syncAccuracy: 0,
+      
+      // Quality monitoring
+      syncQuality: 'excellent', // excellent, good, fair, poor
+      lastSyncCheck: 0,
+      syncErrors: 0,
+      
+      // Configuration
+      syncTolerance: 0.5, // Much tighter tolerance for precision
+      maxLatency: 200,    // Max acceptable latency in ms
+      syncInterval: null,
+      latencyInterval: null
+    };
+
+    // Legacy sync state for compatibility
+    let syncState = {
+      isSyncMaster: false,
+      isInSync: true,
+      preventSync: false
     };
 
     const SERVER_URL = window.location.origin;
 
-    // Sync Management Functions
-    function initializeSyncSystem() {
-      // Clear any existing intervals
-      if (syncState.syncCheckInterval) clearInterval(syncState.syncCheckInterval);
-      if (syncState.heartbeatInterval) clearInterval(syncState.heartbeatInterval);
-
-      // Start sync monitoring (every 3 seconds for non-intrusive checking)
-      syncState.syncCheckInterval = setInterval(checkSyncStatus, 3000);
+    // High-Precision Sync Functions
+    function initializePrecisionSync() {
+      // Start latency measurement
+      startLatencyMeasurement();
       
-      // Start heartbeat for sync masters (every 5 seconds)
-      syncState.heartbeatInterval = setInterval(broadcastSyncHeartbeat, 5000);
+      // Start local sync monitoring
+      startSyncMonitoring();
+      
+      console.log('Precision sync system initialized');
+    }
+
+    function startLatencyMeasurement() {
+      if (precisionSync.latencyInterval) {
+        clearInterval(precisionSync.latencyInterval);
+      }
+      
+      // Measure latency every 5 seconds
+      precisionSync.latencyInterval = setInterval(() => {
+        if (currentRoom && socket && socket.connected) {
+          const timestamp = Date.now();
+          socket.emit("latencyPing", { roomId: currentRoom, timestamp });
+        }
+      }, 5000);
+    }
+
+    function calculatePredictedTime() {
+      if (!precisionSync.lastServerUpdate) return 0;
+      
+      const now = Date.now();
+      const timeSinceUpdate = (now - precisionSync.lastServerUpdate) / 1000;
+      const networkCompensation = precisionSync.networkLatency / 2000; // Half RTT
+      
+      if (precisionSync.serverIsPaused) {
+        precisionSync.predictedTime = precisionSync.serverCurrentTime;
+      } else {
+        // Predict current time with drift correction
+        precisionSync.predictedTime = precisionSync.serverCurrentTime + 
+          (timeSinceUpdate * precisionSync.serverPlaybackRate) + 
+          precisionSync.driftCorrection - networkCompensation;
+      }
+      
+      return precisionSync.predictedTime;
+    }
+
+    function startSyncMonitoring() {
+      if (precisionSync.syncInterval) {
+        clearInterval(precisionSync.syncInterval);
+      }
+      
+      // Check sync accuracy every 100ms for high precision
+      precisionSync.syncInterval = setInterval(() => {
+        if (player && player.getCurrentTime && !isAnimeMode) {
+          checkSyncAccuracy();
+        }
+      }, 100);
+    }
+
+    function checkSyncAccuracy() {
+      if (!player || isAnimeMode) return;
+      
+      const playerTime = player.getCurrentTime();
+      const predictedTime = calculatePredictedTime();
+      const timeDifference = Math.abs(playerTime - predictedTime);
+      
+      precisionSync.syncAccuracy = timeDifference;
+      
+      // Update sync quality based on accuracy
+      if (timeDifference < 0.2) {
+        precisionSync.syncQuality = 'excellent';
+      } else if (timeDifference < 0.5) {
+        precisionSync.syncQuality = 'good';
+      } else if (timeDifference < 1.0) {
+        precisionSync.syncQuality = 'fair';
+      } else {
+        precisionSync.syncQuality = 'poor';
+        precisionSync.syncErrors++;
+      }
+      
+      // Apply correction if needed
+      if (timeDifference > precisionSync.syncTolerance) {
+        applySyncCorrection(predictedTime, precisionSync.serverIsPaused);
+      }
+      
+      updateSyncIndicator();
+    }
+
+    // Legacy sync system (keep for compatibility)
+    function initializeSyncSystem() {
+      // Initialize precision sync instead
+      initializePrecisionSync();
     }
 
     function updateSyncMasterStatus(isMaster) {
@@ -1651,41 +1745,70 @@
       socket.emit("requestSync", { roomId: currentRoom });
     }
 
+    // High-Precision Sync Handlers
+    function handlePrecisionSync(data) {
+      const { serverTime, currentTime, isPaused, playbackRate, timestamp } = data;
+      const now = Date.now();
+      
+      // Update precision sync state
+      precisionSync.serverTime = serverTime;
+      precisionSync.serverCurrentTime = currentTime;
+      precisionSync.serverIsPaused = isPaused;
+      precisionSync.serverPlaybackRate = playbackRate || 1.0;
+      precisionSync.lastServerUpdate = now;
+      
+      // Calculate clock offset for better synchronization
+      const networkDelay = now - timestamp;
+      if (networkDelay > 0 && networkDelay < 5000) { // Sanity check
+        precisionSync.clockOffset = (serverTime + networkDelay/2) - now;
+      }
+      
+      console.log(`Precision sync: ${currentTime.toFixed(2)}s, paused: ${isPaused}, latency: ${networkDelay}ms`);
+    }
+
+    function handleLatencyMeasurement(data) {
+      const { originalTimestamp, serverTimestamp, latency } = data;
+      const now = Date.now();
+      const roundTripTime = now - originalTimestamp;
+      
+      // Update latency tracking
+      precisionSync.networkLatency = latency;
+      precisionSync.latencyHistory.push(latency);
+      
+      // Keep only last 10 measurements
+      if (precisionSync.latencyHistory.length > 10) {
+        precisionSync.latencyHistory.shift();
+      }
+      
+      // Calculate average latency for compensation
+      const avgLatency = precisionSync.latencyHistory.reduce((a, b) => a + b, 0) / precisionSync.latencyHistory.length;
+      precisionSync.networkLatency = avgLatency;
+      
+      console.log(`Network latency: ${latency}ms (avg: ${avgLatency.toFixed(1)}ms)`);
+    }
+
+    // Legacy sync handler (keep for compatibility)
     function handleSyncHeartbeat(data) {
-      if (syncState.isSyncMaster) return; // Masters don't follow heartbeats
+      // Redirect to precision sync if available
+      if (data.serverTime) {
+        handlePrecisionSync(data);
+        return;
+      }
+      
+      // Fallback to old method for compatibility
+      if (syncState.isSyncMaster) return;
 
       const { currentTime, isPaused, timestamp } = data;
       const now = Date.now();
-      const networkDelay = (now - timestamp) / 1000; // Convert to seconds
-      
-      // Track network latency for adaptive sync tolerance
-      syncState.networkLatency = networkDelay;
-      syncState.latencyHistory.push(networkDelay);
-      if (syncState.latencyHistory.length > syncState.maxLatencyHistory) {
-        syncState.latencyHistory.shift();
-      }
-      
-      // Calculate adaptive sync tolerance based on network conditions
-      const avgLatency = syncState.latencyHistory.reduce((a, b) => a + b, 0) / syncState.latencyHistory.length;
-      syncState.adaptiveTolerance.current = Math.min(
-        syncState.adaptiveTolerance.base + (avgLatency * syncState.adaptiveTolerance.latencyMultiplier),
-        syncState.adaptiveTolerance.max
-      );
-      
-      // More conservative time adjustment - use average latency instead of current
-      const adjustedTime = currentTime + avgLatency;
+      const networkDelay = (now - timestamp) / 1000;
+      const adjustedTime = currentTime + networkDelay;
 
-      syncState.lastKnownTime = adjustedTime;
-      syncState.lastUpdateTime = now;
-
-      // Apply sync if we're significantly out of sync using adaptive tolerance
       if (player && player.getCurrentTime) {
         const playerTime = player.getCurrentTime();
         const playerPaused = player.getPlayerState() !== YT.PlayerState.PLAYING;
         const timeDifference = Math.abs(playerTime - adjustedTime);
 
-        // Use adaptive tolerance instead of fixed tolerance
-        if (timeDifference > syncState.adaptiveTolerance.current || playerPaused !== isPaused) {
+        if (timeDifference > 2.0 || playerPaused !== isPaused) {
           applySyncCorrection(adjustedTime, isPaused);
         }
       }
@@ -1746,11 +1869,31 @@
       if (!indicator || !statusText) return;
 
       let className = 'sync-indicator';
-      let text = 'In Sync';
+      let text = 'Sync Status';
 
       if (status === 'syncing') {
         className += ' syncing';
         text = 'Syncing...';
+      } else if (precisionSync.syncQuality && !isAnimeMode) {
+        // Use precision sync quality for YouTube/Vimeo/Twitch
+        switch(precisionSync.syncQuality) {
+          case 'excellent':
+            className += ' in-sync';
+            text = `Excellent (±${(precisionSync.syncAccuracy * 1000).toFixed(0)}ms)`;
+            break;
+          case 'good':
+            className += ' in-sync';
+            text = `Good (±${(precisionSync.syncAccuracy * 1000).toFixed(0)}ms)`;
+            break;
+          case 'fair':
+            className += ' syncing';
+            text = `Fair (±${(precisionSync.syncAccuracy * 1000).toFixed(0)}ms)`;
+            break;
+          case 'poor':
+            className += ' out-of-sync';
+            text = `Poor (±${(precisionSync.syncAccuracy * 1000).toFixed(0)}ms)`;
+            break;
+        }
       } else if (!syncState.isInSync) {
         className += ' out-of-sync';
         text = 'Out of Sync';
@@ -2100,25 +2243,22 @@
     }
 
     function sendAnimeSyncCommand(command, value = null) {
-      if (!currentRoom || !socket || !isAnimeMode) return;
+      if (!currentRoom || !isAnimeMode) return;
       
-      // Prevent spam
-      const now = Date.now();
-      if (now - animeSyncState.commandCooldown < 2000) {
-        showNotification("Please wait before sending another command", "warning");
-        return;
+      // Show helpful notifications instead of fake commands
+      switch(command) {
+        case 'pause':
+          showNotification("⏸️ Please pause the video manually", "info", 3000);
+          break;
+        case 'play':
+          showNotification("▶️ Please play the video manually", "info", 3000);
+          break;
+        case 'sync':
+          showNotification("🔄 Please check your video timing and adjust manually", "info", 4000);
+          break;
+        default:
+          showNotification(`Please ${command} the video manually`, "info", 3000);
       }
-      
-      animeSyncState.commandCooldown = now;
-      
-      socket.emit("animeSyncCommand", {
-        roomId: currentRoom,
-        command: command,
-        value: value,
-        timestamp: now
-      });
-      
-      console.log(`Sent anime sync command: ${command}`, value);
     }
 
     function executeAnimeSyncCommand(command, value, slaveUser) {
@@ -2206,7 +2346,8 @@
     function requestSeek() {
       const time = prompt("Enter time in seconds to seek to:");
       if (time && !isNaN(time)) {
-        sendAnimeSyncCommand('seek', parseFloat(time));
+        const timeValue = parseFloat(time);
+        showNotification(`⏭️ Please seek to ${Math.floor(timeValue)}s manually`, "info", 4000);
       }
     }
 
@@ -2632,6 +2773,15 @@
         handleSyncHeartbeat(data);
       });
 
+      // High-Precision Sync Handlers
+      socket.on("precisionSync", (data) => {
+        handlePrecisionSync(data);
+      });
+
+      socket.on("latencyPong", (data) => {
+        handleLatencyMeasurement(data);
+      });
+
       socket.on("syncRequest", (data) => {
         // Handle sync request from other users (if we're sync master)
         if (syncState.isSyncMaster && player) {
@@ -3035,6 +3185,7 @@
         isAnimeMode = true;
         document.getElementById('animeSyncWarning').style.display = 'block';
         
+        // Use the exact embedUrl provided, or fall back to a default pattern
         const embedUrl = extraData.embedUrl || `https://hianime.to/watch/${videoId}`;
         
         // Determine if user is sync master for anime controls
@@ -3078,17 +3229,6 @@
         document.getElementById('animeSyncWarning').style.display = 'none';
         
         container.innerHTML = `<iframe src="https://player.twitch.tv/?video=${videoId}&parent=${window.location.hostname}&autoplay=true" width="100%" height="100%" frameborder="0"></iframe>`;
-      } else if (platform === 'dailymotion') {
-        isAnimeMode = false;
-        document.getElementById('animeSyncWarning').style.display = 'none';
-        
-        container.innerHTML = `<iframe src="https://www.dailymotion.com/embed/video/${videoId}?autoplay=1" width="100%" height="100%" frameborder="0" allow="autoplay"></iframe>`;
-      } else if (platform === 'rumble') {
-        isAnimeMode = false;
-        document.getElementById('animeSyncWarning').style.display = 'none';
-        
-        container.innerHTML = `<iframe src="https://rumble.com/embed/${videoId}/?pub=4" width="100%" height="100%" frameborder="0" allow="autoplay"></iframe>`;
-      }
     }
 
     function onPlayerReady(event) {
