@@ -1982,6 +1982,22 @@
 
     // Event Handlers
     document.getElementById("joinBtn").onclick = () => {
+      // Check if this is a password join attempt
+      if (window.roomToJoin && window.roomToJoin.requiresPassword) {
+        const password = document.getElementById("passwordInput").value.trim();
+        if (!password) {
+          showNotification("Please enter the room password", "error");
+          return;
+        }
+        socket.emit("joinRoom", { 
+          roomId: window.roomToJoin.room, 
+          userName: window.roomToJoin.name, 
+          password: password 
+        });
+        window.roomToJoin = null; // Clear after use
+        return;
+      }
+      
       const name = document.getElementById("nameInput").value.trim();
       const room = document.getElementById("roomInput").value.trim();
       
@@ -2549,10 +2565,8 @@
             document.getElementById("createPasswordSection").style.display = "none";
             document.getElementById("joinBtn").textContent = "Join Room";
             document.getElementById("createRoomBtn").style.display = "none";
-            document.getElementById("joinBtn").onclick = () => {
-              const password = document.getElementById("passwordInput").value.trim();
-              socket.emit("joinRoom", { roomId: room, userName: name, password: password });
-            };
+            // Store the room info for joining with password
+            window.roomToJoin = { room, name, requiresPassword: true };
           } else {
             socket.emit("joinRoom", { roomId: room, userName: name, password: null });
           }
@@ -3041,10 +3055,7 @@
         const type = data.success ? "success" : "warning";
         showNotification(data.message, type);
       });
-      } else {
-        checkRoom(room, name);
-      }
-    };
+    }
 
     document.getElementById("searchBtn").onclick = () => {
       const query = document.getElementById("searchInput").value.trim();
