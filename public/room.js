@@ -68,9 +68,21 @@ class YouTubeSyncApp {
             this.connectionStatus.style.color = '#4caf50';
         });
 
-        this.socket.on('disconnect', () => {
+        this.socket.on('disconnect', (reason) => {
+            console.log('Disconnected from server:', reason);
             this.connectionStatus.textContent = 'Disconnected';
             this.connectionStatus.style.color = '#f44336';
+        });
+
+        this.socket.on('reconnect', () => {
+            console.log('Reconnected to server');
+            this.connectionStatus.textContent = 'Connected';
+            this.connectionStatus.style.color = '#4caf50';
+            
+            // Rejoin room after reconnection
+            if (this.currentRoom) {
+                this.socket.emit('join-room', this.currentRoom);
+            }
         });
 
         this.socket.on('room-joined', (data) => {
@@ -140,6 +152,24 @@ class YouTubeSyncApp {
         return urlParams.get('id');
     }
 
+    getPlayerHeight() {
+        const screenWidth = window.innerWidth;
+        
+        if (screenWidth >= 1200) {
+            // Desktop: larger player
+            return '600';
+        } else if (screenWidth >= 768) {
+            // Tablet
+            return '450';
+        } else if (screenWidth >= 480) {
+            // Mobile
+            return '315';
+        } else {
+            // Small mobile
+            return '250';
+        }
+    }
+
     leaveRoom() {
         window.location.href = '/';
     }
@@ -178,7 +208,25 @@ class YouTubeSyncApp {
 
     async getVideoTitle(videoId) {
         try {
-            // Try to get title from YouTube oEmbed API
+            // Use YouTube Data API v3 for better reliability
+            const API_KEY = 'AIzaSyA7TDHt3oyVHW78Dk-f7WTPXPjZwdEEU98';
+            const response = await fetch(`https://www.googleapis.com/youtube/v3/videos?id=${videoId}&key=${API_KEY}&part=snippet`);
+            
+            if (response.ok) {
+                const data = await response.json();
+                if (data.items && data.items.length > 0) {
+                    const title = data.items[0].snippet.title;
+                    const channelTitle = data.items[0].snippet.channelTitle;
+                    console.log('Fetched video data:', { title, channelTitle });
+                    return title;
+                }
+            }
+        } catch (error) {
+            console.log('YouTube API failed, trying oEmbed:', error);
+        }
+
+        try {
+            // Fallback to oEmbed API
             const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
             if (response.ok) {
                 const data = await response.json();
@@ -187,6 +235,7 @@ class YouTubeSyncApp {
         } catch (error) {
             console.log('Could not fetch video title:', error);
         }
+        
         return `Video ${videoId.substring(0, 8)}`;
     }
 
@@ -298,33 +347,48 @@ class YouTubeSyncApp {
         }
 
         console.log('Syncing video state:', state);
+        
+        // Block local events during sync
         this.isUpdatingFromRemote = true;
         
-        const timeDiff = Date.now() - state.lastUpdate;
-        let targetTime = state.currentTime;
-        
-        if (state.isPlaying) {
-            targetTime += timeDiff / 1000;
-        }
-
-        console.log('Seeking to time:', targetTime, 'isPlaying:', state.isPlaying);
-
         try {
+            const timeDiff = Date.now() - state.lastUpdate;
+            let targetTime = state.currentTime;
+            
+            // Compensate for network delay if video is playing
+            if (state.isPlaying) {
+                targetTime += timeDiff / 1000;
+            }
+
+            console.log('Seeking to time:', targetTime, 'isPlaying:', state.isPlaying);
+
+            // Always seek first to ensure we're at the right time
             this.player.seekTo(targetTime, true);
             
-            if (state.isPlaying) {
-                this.player.playVideo();
-            } else {
-                this.player.pauseVideo();
-            }
+            // Then set the play state
+            setTimeout(() => {
+                if (state.isPlaying) {
+                    if (this.player.getPlayerState() !== YT.PlayerState.PLAYING) {
+                        console.log('Starting playback');
+                        this.player.playVideo();
+                    }
+                } else {
+                    if (this.player.getPlayerState() === YT.PlayerState.PLAYING) {
+                        console.log('Pausing playback');
+                        this.player.pauseVideo();
+                    }
+                }
+            }, 100);
+            
         } catch (error) {
             console.error('Error syncing video state:', error);
         }
 
+        // Allow local events after sync completes
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
             console.log('Sync complete, allowing local events');
-        }, 1500);
+        }, 2000);
     }
 
     updateRoomInfo() {
@@ -414,7 +478,7 @@ class YouTubeSyncApp {
             console.log('Creating YouTube player...');
             try {
                 this.player = new YT.Player('player', {
-                    height: '675',
+                    height: this.getPlayerHeight(),
                     width: '100%',
                     playerVars: {
                         'playsinline': 1,
@@ -474,12 +538,22 @@ class YouTubeSyncApp {
             
             try {
                 const currentTime = this.player.getCurrentTime();
-                const timeDiff = Math.abs(currentTime - this.lastKnownTime);
+                const playerState = this.player.getPlayerState();
                 
-                // If time jumped more than 2 seconds, user probably seeked
-                if (timeDiff > 2 && this.lastKnownTime > 0) {
-                    console.log('Seek detected:', this.lastKnownTime, '->', currentTime);
-                    this.socket.emit('video-seek', { currentTime });
+                // Only check for seeks when not buffering or loading
+                if (playerState === YT.PlayerState.BUFFERING || playerState === YT.PlayerState.CUED) {
+                    return;
+                }
+                
+                if (this.lastKnownTime > 0) {
+                    const expectedTime = this.lastKnownTime + 1; // Expected time after 1 second
+                    const timeDiff = Math.abs(currentTime - expectedTime);
+                    
+                    // If time is off by more than 3 seconds, user probably seeked
+                    if (timeDiff > 3) {
+                        console.log('Manual seek detected:', this.lastKnownTime, '->', currentTime);
+                        this.socket.emit('video-seek', { currentTime });
+                    }
                 }
                 
                 this.lastKnownTime = currentTime;

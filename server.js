@@ -188,13 +188,18 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    console.log('User disconnecting:', socket.id);
+    
     if (socket.roomId) {
       const room = rooms.get(socket.roomId);
-      if (room) {
+      if (room && room.users.has(socket.id)) {
+        console.log(`Removing user ${socket.id} from room ${socket.roomId}`);
         room.users.delete(socket.id);
         
+        // Handle host change if needed
         if (room.host === socket.id && room.users.size > 0) {
           room.host = Array.from(room.users)[0];
+          console.log(`New host assigned: ${room.host}`);
           io.to(room.host).emit('host-changed', { isHost: true });
         }
         
@@ -203,6 +208,7 @@ io.on('connection', (socket) => {
           console.log(`Room ${socket.roomId} deleted - no users left`);
         } else {
           // Notify ALL remaining users about the updated user count
+          console.log(`Notifying room ${socket.roomId} of user count change: ${room.users.size}`);
           io.to(socket.roomId).emit('user-count-updated', { userCount: room.users.size });
           console.log(`User ${socket.id} left room ${socket.roomId}. Remaining users: ${room.users.size}`);
         }
