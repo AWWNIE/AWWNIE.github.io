@@ -10,7 +10,12 @@ const io = socketIo(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  // Configure timeouts for long live streams
+  pingTimeout: 120000, // 2 minutes instead of default 5 seconds
+  pingInterval: 30000,  // 30 seconds instead of default 25 seconds
+  transports: ['websocket', 'polling'],
+  allowEIO3: true
 });
 
 const PORT = process.env.PORT || 3000;

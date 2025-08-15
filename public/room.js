@@ -1,6 +1,15 @@
 class YouTubeSyncApp {
     constructor() {
-        this.socket = io();
+        this.socket = io({
+            // Enhanced reconnection for long live streams
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            maxReconnectionAttempts: 10,
+            timeout: 20000,
+            forceNew: false,
+            transports: ['websocket', 'polling']
+        });
         this.player = null;
         this.playerReady = false;
         this.apiReady = false;
@@ -482,9 +491,16 @@ class YouTubeSyncApp {
                     <div class="queue-item-meta">#${index + 1} in queue</div>
                 </div>
                 <div class="queue-item-actions">
-                    <button class="btn danger" onclick="app.removeFromQueue('${item.id}')">Remove</button>
+                    <button class="btn danger" data-item-id="${item.id}">Remove</button>
                 </div>
             `;
+            
+            // Add event listener to the remove button
+            const removeBtn = queueItem.querySelector('.btn.danger');
+            removeBtn.addEventListener('click', () => {
+                this.removeFromQueue(item.id);
+            });
+            
             this.queueList.appendChild(queueItem);
         });
     }
