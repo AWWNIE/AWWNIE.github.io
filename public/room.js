@@ -23,6 +23,8 @@ class YouTubeSyncApp {
         this.lastKnownTime = 0;
         this.seekCheckInterval = null;
         this.syncRetryCount = 0;
+        this.lastSyncTime = 0;
+        this.syncThrottleMs = 1000; // Minimum time between sync events
         
         this.initializeElements();
         this.setupEventListeners();
@@ -172,22 +174,18 @@ class YouTubeSyncApp {
                 return;
             }
             
+            // Throttle sync events to prevent spam
+            const now = Date.now();
+            if (now - this.lastSyncTime < this.syncThrottleMs) {
+                console.log('Throttling play sync event - too soon since last sync');
+                return;
+            }
+            this.lastSyncTime = now;
+            
             const beforeState = this.player ? this.player.getPlayerState() : 'no player';
             console.log('Processing remote play event - current state before:', beforeState);
             
             this.handleRemotePlay(data);
-            
-            // Check final state after a delay
-            setTimeout(() => {
-                const afterState = this.player ? this.player.getPlayerState() : 'no player';
-                console.log('Play sync complete - final state:', afterState);
-                if (afterState === YT.PlayerState.PLAYING) {
-                    console.log('✅ Play sync successful');
-                } else {
-                    console.log('❌ Play sync may have failed - state:', afterState);
-                }
-            }, 500);
-            
             this.notifyInfo('Video Playing', 'Video playback started');
         });
 
@@ -200,22 +198,11 @@ class YouTubeSyncApp {
                 return;
             }
             
+            // Allow pause events to go through immediately (they're important)
             const beforeState = this.player ? this.player.getPlayerState() : 'no player';
             console.log('Processing remote pause event - current state before:', beforeState);
             
             this.handleRemotePause(data);
-            
-            // Check final state after a delay
-            setTimeout(() => {
-                const afterState = this.player ? this.player.getPlayerState() : 'no player';
-                console.log('Pause sync complete - final state:', afterState);
-                if (afterState === YT.PlayerState.PAUSED) {
-                    console.log('✅ Pause sync successful');
-                } else {
-                    console.log('❌ Pause sync may have failed - state:', afterState);
-                }
-            }, 500);
-            
             this.notifyInfo('Video Paused', 'Video playback paused');
         });
 
@@ -227,6 +214,14 @@ class YouTubeSyncApp {
                 console.log('Ignoring own video-seek event');
                 return;
             }
+            
+            // Throttle seek events more aggressively
+            const now = Date.now();
+            if (now - this.lastSyncTime < this.syncThrottleMs) {
+                console.log('Throttling seek sync event - too soon since last sync');
+                return;
+            }
+            this.lastSyncTime = now;
             
             this.handleRemoteSeek(data);
             const time = Math.floor(data.currentTime);
@@ -908,41 +903,38 @@ class YouTubeSyncApp {
         this.isUpdatingFromRemote = true;
         
         try {
+            const currentTime = this.player.getCurrentTime();
             const timeDiff = Date.now() - data.lastUpdate;
             let targetTime = data.currentTime + (timeDiff / 1000);
+            const timeDifference = Math.abs(currentTime - targetTime);
             
-            console.log('Syncing to play at time:', targetTime);
+            console.log('Play sync - current:', currentTime, 'target:', targetTime, 'diff:', timeDifference);
             
-            this.player.seekTo(targetTime, true);
+            // Only seek if time difference is significant (>2 seconds)
+            if (timeDifference > 2) {
+                console.log('Seeking due to significant time difference');
+                this.player.seekTo(targetTime, true);
+            } else {
+                console.log('Skipping seek - time difference too small');
+            }
             
-            // Ensure video plays with retry logic
-            const ensurePlay = (attempt = 1) => {
-                const currentState = this.player.getPlayerState();
-                console.log(`Play attempt ${attempt} - player state:`, currentState);
-                
-                if (currentState !== YT.PlayerState.PLAYING) {
-                    console.log('Video not playing - executing play');
-                    this.player.playVideo();
-                    
-                    // Verify play worked after a short delay
-                    if (attempt < 3) {
-                        setTimeout(() => ensurePlay(attempt + 1), 200);
-                    }
-                } else {
-                    console.log('Video successfully playing');
-                }
-            };
-            
-            setTimeout(() => ensurePlay(), 100);
+            // Just play the video without aggressive retry
+            const currentState = this.player.getPlayerState();
+            if (currentState !== YT.PlayerState.PLAYING) {
+                console.log('Starting playback');
+                this.player.playVideo();
+            } else {
+                console.log('Video already playing');
+            }
             
         } catch (error) {
             console.error('Error handling remote play:', error);
         }
 
-        // Unblock after delay
+        // Unblock quickly
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
-        }, 300);
+        }, 200);
     }
 
     handleRemotePause(data) {
@@ -957,46 +949,37 @@ class YouTubeSyncApp {
         this.isUpdatingFromRemote = true;
         
         try {
-            // Seek to the pause position
-            this.player.seekTo(data.currentTime, true);
-            console.log('Seeked to pause position:', data.currentTime);
+            const currentTime = this.player.getCurrentTime();
+            const timeDifference = Math.abs(currentTime - data.currentTime);
             
-            // Ensure video is paused with retry logic
-            const ensurePause = (attempt = 1) => {
-                const currentState = this.player.getPlayerState();
-                console.log(`Pause attempt ${attempt} - player state:`, currentState);
-                
-                if (currentState === YT.PlayerState.PLAYING) {
-                    console.log('Video still playing - executing pause');
-                    this.player.pauseVideo();
-                    
-                    // Verify pause worked after a short delay
-                    if (attempt < 3) {
-                        setTimeout(() => ensurePause(attempt + 1), 200);
-                    }
-                } else if (currentState === YT.PlayerState.PAUSED) {
-                    console.log('Video successfully paused');
-                } else if (currentState === YT.PlayerState.BUFFERING) {
-                    console.log('Video buffering - will pause when ready');
-                    // Force pause even during buffering
-                    this.player.pauseVideo();
-                } else {
-                    console.log('Video in state:', currentState, '- forcing pause anyway');
-                    this.player.pauseVideo();
-                }
-            };
+            console.log('Pause sync - current:', currentTime, 'target:', data.currentTime, 'diff:', timeDifference);
             
-            setTimeout(() => ensurePause(), 100);
+            // Only seek if time difference is significant (>1 second for pause)
+            if (timeDifference > 1) {
+                console.log('Seeking to pause position due to time difference');
+                this.player.seekTo(data.currentTime, true);
+            } else {
+                console.log('Skipping seek - already close to pause position');
+            }
+            
+            // Simple pause without retry loops
+            const currentState = this.player.getPlayerState();
+            if (currentState === YT.PlayerState.PLAYING) {
+                console.log('Pausing video');
+                this.player.pauseVideo();
+            } else {
+                console.log('Video already paused or in state:', currentState);
+            }
             
         } catch (error) {
             console.error('Error handling remote pause:', error);
         }
 
-        // Unblock after delay
+        // Unblock quickly
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
             console.log('Cleared isUpdatingFromRemote after pause sync');
-        }, 300);
+        }, 200);
     }
 
     handleRemoteSeek(data) {
