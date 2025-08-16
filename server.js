@@ -11,13 +11,15 @@ const io = socketIo(server, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  // Optimized settings for stability
-  pingTimeout: 60000,   // 1 minute - more reasonable
-  pingInterval: 25000,  // 25 seconds - default works well
-  transports: ['websocket', 'polling'],
+  // Enhanced stability settings for Railway deployment
+  pingTimeout: 120000,  // 2 minutes - longer for unstable connections
+  pingInterval: 30000,  // 30 seconds
+  transports: ['polling', 'websocket'], // Prioritize polling for stability
   allowEIO3: true,
   serveClient: true,
-  cookie: false
+  cookie: false,
+  connectTimeout: 60000,
+  upgradeTimeout: 30000
 });
 
 const PORT = process.env.PORT || 3000;
@@ -25,6 +27,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static('public'));
 
 const rooms = new Map();
+const roomDeletionTimers = new Map(); // Track pending room deletions
 
 function createRoom(roomId) {
   return {
@@ -61,6 +64,13 @@ io.on('connection', (socket) => {
   socket.on('join-room', (roomId) => {
     let room = rooms.get(roomId);
     
+    // Cancel any pending deletion for this room
+    if (roomDeletionTimers.has(roomId)) {
+      clearTimeout(roomDeletionTimers.get(roomId));
+      roomDeletionTimers.delete(roomId);
+      console.log(`Cancelled scheduled deletion for room ${roomId} - user rejoining`);
+    }
+    
     // Create room if it doesn't exist
     if (!room) {
       room = createRoom(roomId);
@@ -90,7 +100,11 @@ io.on('connection', (socket) => {
 
   socket.on('load-video', (data) => {
     const room = rooms.get(socket.roomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`Load video failed: Room ${socket.roomId} not found for ${socket.id}`);
+      socket.emit('error', 'Room not found - please rejoin the room');
+      return;
+    }
 
     room.currentVideo = data.videoId;
     // Reset video state for new video - don't send old state
@@ -110,7 +124,11 @@ io.on('connection', (socket) => {
 
   socket.on('video-play', (data) => {
     const room = rooms.get(socket.roomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`Video play failed: Room ${socket.roomId} not found for ${socket.id}`);
+      socket.emit('error', 'Room not found - please rejoin the room');
+      return;
+    }
 
     room.videoState = {
       isPlaying: true,
@@ -128,7 +146,11 @@ io.on('connection', (socket) => {
 
   socket.on('video-pause', (data) => {
     const room = rooms.get(socket.roomId);
-    if (!room) return;
+    if (!room) {
+      console.log(`Video pause failed: Room ${socket.roomId} not found for ${socket.id}`);
+      socket.emit('error', 'Room not found - please rejoin the room');
+      return;
+    }
 
     room.videoState = {
       isPlaying: false,
@@ -267,9 +289,30 @@ io.on('connection', (socket) => {
         }
         
         if (room.users.size === 0) {
-          rooms.delete(socket.roomId);
-          console.log(`Room ${socket.roomId} deleted - no users left`);
+          // Don't delete room immediately - add longer grace period for unstable connections
+          console.log(`Room ${socket.roomId} is empty, scheduling deletion in 5 minutes`);
+          
+          const deletionTimer = setTimeout(() => {
+            const currentRoom = rooms.get(socket.roomId);
+            if (currentRoom && currentRoom.users.size === 0) {
+              rooms.delete(socket.roomId);
+              roomDeletionTimers.delete(socket.roomId);
+              console.log(`Room ${socket.roomId} deleted after grace period - no users returned`);
+            } else {
+              console.log(`Room ${socket.roomId} deletion cancelled - users present`);
+              roomDeletionTimers.delete(socket.roomId);
+            }
+          }, 300000); // 5 minute grace period for unstable connections
+          
+          roomDeletionTimers.set(socket.roomId, deletionTimer);
         } else {
+          // Cancel any pending deletion since we still have users
+          if (roomDeletionTimers.has(socket.roomId)) {
+            clearTimeout(roomDeletionTimers.get(socket.roomId));
+            roomDeletionTimers.delete(socket.roomId);
+            console.log(`Cancelled deletion for room ${socket.roomId} - users still present`);
+          }
+          
           // Notify ALL remaining users about the updated user count
           console.log(`Notifying room ${socket.roomId} of user count change: ${room.users.size}`);
           io.to(socket.roomId).emit('user-count-updated', { userCount: room.users.size });

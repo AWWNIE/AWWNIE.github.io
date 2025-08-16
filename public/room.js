@@ -1,15 +1,17 @@
 class YouTubeSyncApp {
     constructor() {
         this.socket = io({
-            // Stable reconnection settings
+            // Enhanced stability settings for Railway
             reconnection: true,
-            reconnectionDelay: 2000,
+            reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
-            maxReconnectionAttempts: 5,
-            timeout: 20000,
+            maxReconnectionAttempts: 10,
+            timeout: 30000,
             forceNew: false,
-            transports: ['websocket', 'polling'],
-            autoConnect: true
+            transports: ['polling', 'websocket'], // Prioritize polling for stability
+            autoConnect: true,
+            upgrade: true,
+            rememberUpgrade: false
         });
         this.player = null;
         this.playerReady = false;
@@ -110,9 +112,10 @@ class YouTubeSyncApp {
             this.connectionStatus.style.color = '#4caf50';
             this.notifySuccess('Reconnected', 'Connection restored successfully');
             
-            // Rejoin room after reconnection
+            // Rejoin room after reconnection with retry logic
             if (this.currentRoom) {
-                this.socket.emit('join-room', this.currentRoom);
+                console.log('Rejoining room after reconnect:', this.currentRoom);
+                this.attemptRoomRejoin();
             }
         });
 
@@ -153,7 +156,18 @@ class YouTubeSyncApp {
 
         this.socket.on('error', (message) => {
             console.error('Socket error:', message);
-            this.notifyError('Room Error', message);
+            
+            if (message.includes('Room not found')) {
+                console.log('Room not found - attempting to rejoin with retry logic');
+                this.notifyWarning('Reconnecting', 'Room connection lost, attempting to rejoin...');
+                
+                // Use the retry logic instead of single attempt
+                setTimeout(() => {
+                    this.attemptRoomRejoin();
+                }, 1000);
+            } else {
+                this.notifyError('Room Error', message);
+            }
         });
 
         this.socket.on('video-loaded', (data) => {
@@ -447,6 +461,24 @@ class YouTubeSyncApp {
         setTimeout(() => {
             this.isUpdatingFromRemote = false;
         }, 500);
+    }
+
+    attemptRoomRejoin(attempt = 1) {
+        if (!this.currentRoom) return;
+        
+        console.log(`Room rejoin attempt ${attempt} for room ${this.currentRoom}`);
+        this.socket.emit('join-room', this.currentRoom);
+        
+        // If rejoin fails, retry up to 3 times
+        if (attempt < 3) {
+            setTimeout(() => {
+                // Check if we successfully rejoined by seeing if we got room-joined event
+                if (!this.socket.connected) {
+                    console.log(`Rejoin attempt ${attempt} may have failed, retrying...`);
+                    this.attemptRoomRejoin(attempt + 1);
+                }
+            }, 2000 * attempt); // Exponential backoff
+        }
     }
 
     leaveRoom() {
