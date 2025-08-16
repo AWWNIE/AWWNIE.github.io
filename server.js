@@ -11,15 +11,13 @@ const io = socketIo(server, {
     origin: "*",
     methods: ["GET", "POST"]
   },
-  // Enhanced stability settings for Railway deployment
-  pingTimeout: 120000,  // 2 minutes - longer for unstable connections
-  pingInterval: 30000,  // 30 seconds
-  transports: ['polling', 'websocket'], // Prioritize polling for stability
+  // Optimized settings for stability
+  pingTimeout: 60000,   // 1 minute - more reasonable
+  pingInterval: 25000,  // 25 seconds - default works well
+  transports: ['websocket', 'polling'],
   allowEIO3: true,
   serveClient: true,
-  cookie: false,
-  connectTimeout: 60000,
-  upgradeTimeout: 30000
+  cookie: false
 });
 
 const PORT = process.env.PORT || 3000;
@@ -289,8 +287,8 @@ io.on('connection', (socket) => {
         }
         
         if (room.users.size === 0) {
-          // Don't delete room immediately - add longer grace period for unstable connections
-          console.log(`Room ${socket.roomId} is empty, scheduling deletion in 5 minutes`);
+          // Don't delete room immediately - add grace period for reconnections
+          console.log(`Room ${socket.roomId} is empty, scheduling deletion in 60 seconds`);
           
           const deletionTimer = setTimeout(() => {
             const currentRoom = rooms.get(socket.roomId);
@@ -302,7 +300,7 @@ io.on('connection', (socket) => {
               console.log(`Room ${socket.roomId} deletion cancelled - users present`);
               roomDeletionTimers.delete(socket.roomId);
             }
-          }, 300000); // 5 minute grace period for unstable connections
+          }, 60000); // 60 second grace period
           
           roomDeletionTimers.set(socket.roomId, deletionTimer);
         } else {
